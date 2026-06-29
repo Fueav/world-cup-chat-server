@@ -1,54 +1,55 @@
 # Harness Source Analysis
 
-This document records the P0/P1 Thariq Shihipar posts used to upgrade this repository's Harness framework. The executable adoption lives in `docs/harness-workflows.json`; this file explains why each idea was adopted and how conflicts were resolved.
+This file records the official Claude Code, Anthropic, OpenAI, and Codex sources that shape the project Harness contract. It exists so future agents can update the workflow system from traceable sources instead of memory or chat.
 
-## Reading Matrix
+## Official Source Set
 
-| Priority | Source ID | Source | Status | Adopted into framework |
-| --- | --- | --- | --- | --- |
-| P0 | `dynamic-workflows` | [A harness for every task: dynamic workflows in Claude Code](https://claude.com/blog/a-harness-for-every-task-dynamic-workflows-in-claude-code) | Read official article | Workflow classes, classifier routing, fan-out/synthesis, adversarial verification, generate/filter, tournament, loop-until-done, quarantine, model routing, budgets. |
-| P0 | `skills` | [Lessons from building Claude Code: How we use skills](https://claude.com/blog/lessons-from-building-claude-code-how-we-use-skills) | Read official article | Skills as folders, gotchas, progressive disclosure, scripts/assets, setup questions, memory, hooks, model-facing descriptions. |
-| P0 | `prompt-caching` | [Lessons from building Claude Code: Prompt caching is everything](https://claude.com/blog/lessons-from-building-claude-code-prompt-caching-is-everything) | Read official article | Stable prompt/tool prefix, dynamic updates via messages, model routing via subagents, deferred tool loading, cache-safe compaction. |
-| P0 | `seeing-like-agent` | [Seeing like an agent: how we design tools in Claude Code](https://claude.com/blog/seeing-like-an-agent) | Read official article | Model-shaped tools, high bar for new tools, AskUserQuestion-style elicitation, task primitives, agentic search, progressive disclosure. |
-| P0 | `agent-sdk` | [Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk) | Read official article | Give agents a computer, file-system context engineering, agentic search before semantic search, subagents, compaction, concrete and visual feedback. |
-| P1 | `session-management` | [Using Claude Code: session management and 1M context](https://claude.com/blog/using-claude-code-session-management-and-1m-context) | Read official article | Start fresh for new tasks, rewind failed paths, compact with hints, subagents for noisy intermediate outputs. |
-| P1 | `html-artifacts` | [Using Claude Code: The unreasonable effectiveness of HTML](https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html) | Read official article | HTML as high-density human review surface, visual comparison, PR review, reports, custom editors, export back to workflow. |
-| P1 | `tasks` | [We are turning Todos into Tasks in Claude Code](https://x.com/trq212/status/2014480496013803643) | Read public X article text | Durable task graph, dependencies, blockers, file-system state, multi-session and multi-subagent collaboration. |
-| P1 | `playgrounds` | [Making Playgrounds using Claude Code](https://x.com/trq212/status/2017024445244924382) | Read public X article text | Standalone HTML playgrounds for visualizing, tuning, commenting, and exporting prompts or structured decisions. |
-| P1 | `prototyping` | [How we prototype using Claude Code](https://x.com/trq212/status/1963028819943841873) | Read public X post text; video details not transcribed | Cheap multi-variant prototypes; use artifact/tournament workflows before converging on one design. |
+| Source ID | Provider | Source |
+| --- | --- | --- |
+| `openai-harness-engineering` | OpenAI | https://openai.com/index/harness-engineering/ |
+| `openai-codex-agent-loop` | OpenAI | https://openai.com/index/unrolling-the-codex-agent-loop/ |
+| `openai-codex-manual` | OpenAI | https://developers.openai.com/codex/codex-manual.md |
+| `claude-dynamic-workflows` | Anthropic | https://claude.com/blog/a-harness-for-every-task-dynamic-workflows-in-claude-code |
+| `claude-long-running-agents` | Anthropic | https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents |
+| `claude-long-running-apps` | Anthropic | https://www.anthropic.com/engineering/harness-design-long-running-apps |
+| `claude-skills` | Anthropic | https://claude.com/blog/lessons-from-building-claude-code-how-we-use-skills |
+| `claude-prompt-caching` | Anthropic | https://claude.com/blog/lessons-from-building-claude-code-prompt-caching-is-everything |
+| `claude-html-artifacts` | Anthropic | https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html |
 
 ## Adopted Principles
 
-1. Classify before compute: do not reflexively fan out or use heavy models for small edits.
-2. Split contexts when scale, bias, or noisy output would pollute the parent context.
-3. Prefer concrete feedback: tests, linters, screenshots, state assertions, and release gates beat ungrounded judging.
-4. Keep the prompt/tool prefix stable; use messages, modes, subagents, or deferred loading for dynamic behavior.
-5. Use progressive disclosure: references, scripts, examples, assets, runbooks, and subagents should be discovered when needed.
-6. Use durable task graphs for long-running work with dependencies and blockers.
-7. Use HTML/playground artifacts when human inspection, tuning, or export matters.
-8. Start with transparent agentic search; add semantic search only for speed or recall tradeoffs.
-9. Treat skills as folders with gotchas, setup, memory, scripts, assets, and optional hooks.
-10. Compact or fork in a cache-safe way and preserve only load-bearing context.
+| Principle ID | Project meaning | Main sources |
+| --- | --- | --- |
+| `source-traceability` | Harness classes and principles must point back to official sources. | `openai-harness-engineering`, `claude-dynamic-workflows` |
+| `release-gate-hard-authority` | Dynamic workflows guide execution, but `scripts/verify_release.sh` stays the release authority. | `openai-codex-manual`, `openai-harness-engineering` |
+| `map-not-encyclopedia` | Keep root agent guidance short and use docs/specs as the indexed system of record. | `openai-harness-engineering`, `openai-codex-manual` |
+| `agent-legible-environment` | Agents need direct access to app state, logs, metrics, traces, UI snapshots, and deterministic run commands. | `openai-harness-engineering`, `claude-long-running-agents`, `claude-long-running-apps` |
+| `incremental-task-ledger` | Long work should progress one feature or task at a time with structured state for the next session. | `claude-long-running-agents`, `claude-long-running-apps` |
+| `external-evaluator-loop` | The agent doing the work should not be the only judge of done. | `claude-dynamic-workflows`, `claude-long-running-apps`, `openai-codex-manual` |
+| `cache-safe-context` | Stable prefixes, stable tool sets, append-only updates, and cache-safe compaction keep long workflows efficient. | `claude-prompt-caching`, `openai-codex-agent-loop` |
+| `skill-progressive-disclosure` | Repeated workflows become focused skills with trigger descriptions, references, scripts, gotchas, and tests. | `claude-skills`, `openai-codex-manual` |
+| `sandbox-and-quarantine` | Untrusted readers, privileged actors, sandbox boundaries, and hooks are separate safety layers. | `claude-dynamic-workflows`, `openai-codex-manual` |
+| `continuous-garbage-collection` | Agent-first repos need mechanical principles and recurring cleanup so drift does not compound. | `openai-harness-engineering`, `claude-skills` |
+| `artifact-review-surface` | Dense review artifacts, including HTML when useful, help humans and verifier agents inspect complex work. | `claude-html-artifacts`, `claude-long-running-apps` |
 
-## Conflict Audit
+## Gap Audit
 
-| Conflict | Resolution in this repository |
-| --- | --- |
-| Dynamic workflows can pick tools/models, while prompt caching discourages changing tool sets. | Workflows may choose models through subagents and load heavy tool schemas through deferred discovery, but the active tool surface must stay stable inside a session. |
-| Dynamic workflows improve quality but can overuse tokens. | `budget` is required for every workflow, and virtual requirements include a small edit that must stay `HARNESS-FOCUSED-CHANGE`. |
-| Skills should encode best practices, but over-specific skills can railroad Claude. | Workflow and skill guidance uses trigger descriptions, gotchas, stop conditions, and evidence; it avoids prescribing every implementation step. |
-| Agentic search is transparent, while semantic search is faster. | Harness defaults to agentic search; semantic search is a later optimization when speed or recall variation is worth the extra maintenance. |
-| LLM-as-judge is useful but weak as sole proof. | LLM judging is secondary to concrete feedback and adversarial verification against explicit rubrics. |
-| HTML artifacts are rich but not release evidence by themselves. | Interactive artifacts support human review and export; release readiness still depends on `.artifacts/` and `scripts/verify_release.sh`. |
-| Task graphs help long work but add overhead. | `state_strategy.task_graph` is `required` only for long-run, wide refactor, security, and incident workflows; focused changes set it to `none`. |
+| Area | Previous state | Project response |
+| --- | --- | --- |
+| Source traceability | Workflow classes existed but did not carry source IDs or adopted principles. | `docs/harness-workflows.json` now requires `source_set`, `adopted_principles`, `source_ids`, and `principle_ids`. |
+| Dynamic workflow patterns | Core classifier, fan-out, adversarial, loop, quarantine, model routing, tournament, budget, and worktree patterns existed. | Pattern catalog now also covers generate-filter, progressive disclosure, source tracing, task ledgers, runtime feedback, cache-safe prefix, trajectory review, hook gates, skill packaging, and artifact review. |
+| Long-running handoff | Existing classes had resumable evidence but no workflow for multi-session task ledgers. | `HARNESS-LONG-RUN-TASK-GRAPH` covers feature ledgers, clean handoffs, context reset or compaction points, and session boot checks. |
+| Agent-legible runtime | Release evidence existed, but runtime/UI/log/metric legibility was not a first-class workflow. | `HARNESS-RUNTIME-LEGIBILITY` covers one-command boot, app-driving smoke tests, logs, metrics, traces, and worktree-local runtime evidence. |
+| Eval improvement | Adversarial review existed, but repeated agent failures did not have a loop for turning examples into evals or hooks. | `HARNESS-EVAL-IMPROVEMENT-LOOP` covers trajectory review, regression examples, evals, deterministic scripts, and verifier reruns. |
+| Skill evolution | `.agents/skills` existed, but repeated workflows were not connected to skill creation and measurement. | `HARNESS-SKILL-EVOLUTION` covers gotchas, references, scripts, trigger descriptions, hook gates, and measured skill behavior. |
+| Cache-sensitive agent design | No explicit rule protected stable prompts/tool surfaces. | `cache-safe-prefix` is now a documented pattern and principle for long workflows, skills, and compaction-sensitive runs. |
+| Human review surface | Markdown docs were the default review artifact. | `artifact-review` allows richer visual or HTML review surfaces when complexity justifies them, while release evidence remains tool-neutral. |
 
-## Framework Changes Triggered By The Reading
+## Cooperation Rules
 
-- `docs/harness-workflows.json` now stores `source_reading_set` and `principles`, so the manifest is traceable to the read articles.
-- Every workflow class now declares `source_ids`, `context_strategy`, `tool_policy`, `state_strategy`, and `artifact_strategy`.
-- The pattern vocabulary now includes progressive disclosure, agentic search, task graphs, cache-safe forking, stable tool prefix, deferred loading, human-in-loop artifacts, concrete feedback, visual feedback, and generate/filter.
-- New workflow classes:
-  - `HARNESS-LONG-RUN-TASK-GRAPH`
-  - `HARNESS-INTERACTIVE-ARTIFACT`
-  - `HARNESS-SKILL-EVOLUTION`
-- `docs/harness-virtual-requirements.json` tests the framework against synthetic demands instead of only validating JSON shape.
+- Claude-specific workflow names, Codex-specific surfaces, and local AI-tool features are source material, not project authority. Project authority stays in `AGENTS.md`, `docs/specifications/`, `docs/implementation-plans/`, `docs/`, scripts, and `.ai-boundaries.yml`.
+- Dynamic workflows should increase compute only when their class explains the budget, isolation model, and stop condition.
+- Source traceability does not replace current-state verification. Every implementation still has to pass the release harness.
+- Cache efficiency must not weaken safety. Stable tool sets, append-only context updates, and compaction hygiene are performance practices; sandbox boundaries and approval-required paths still apply.
+- HTML or rich artifacts are optional review surfaces, not mandatory release artifacts. They are useful when a reviewer needs comparison, interaction, visualization, or dense cross-source inspection.
+- Skills should stay small and triggerable. If a workflow grows into a broad encyclopedia, move details into references and keep the entry point concise.
