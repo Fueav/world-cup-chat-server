@@ -40,10 +40,17 @@ class Repos:
     # --- Conversation ---
 
     async def create_conversation(
-        self, user_id: str | None, title: str | None
+        self,
+        user_id: str | None,
+        title: str | None,
+        conversation_id: str | None = None,
     ) -> Conversation:
         """创建会话并刷新以获得 server_default 字段。"""
-        conv = Conversation(id=new_conversation_id(), user_id=user_id, title=title)
+        conv = Conversation(
+            id=conversation_id or new_conversation_id(),
+            user_id=user_id,
+            title=title,
+        )
         self._session.add(conv)
         await self._session.flush()
         await self._session.refresh(conv)
@@ -84,7 +91,11 @@ class Repos:
             existing = await self.get_conversation(conversation_id)
             if existing is not None:
                 return existing
-        return await self.create_conversation(user_id=user_id, title=None)
+        return await self.create_conversation(
+            user_id=user_id,
+            title=None,
+            conversation_id=conversation_id,
+        )
 
     # --- Message ---
 

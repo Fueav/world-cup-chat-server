@@ -2,9 +2,29 @@ from __future__ import annotations
 
 from sqlalchemy import UniqueConstraint
 
+from app.api.repos import Repos
 from app.core.enums import RunStatus
 from app.core.models import IdempotencyRecord, Message, ToolCallLog
 from app.core.schemas import ChatAccepted
+
+
+class _MemorySession:
+    def __init__(self) -> None:
+        self.rows = {}
+        self.added = []
+
+    async def get(self, model, key):
+        return self.rows.get(key)
+
+    def add(self, entity) -> None:
+        self.added.append(entity)
+        self.rows[entity.id] = entity
+
+    async def flush(self) -> None:
+        return None
+
+    async def refresh(self, entity) -> None:
+        return None
 
 
 def test_message_model_binds_assistant_message_to_agent_run():
@@ -57,3 +77,13 @@ def test_tool_call_log_has_attempt_and_timing_fields():
     assert "attempt" in columns
     assert "started_at" in columns
     assert "finished_at" in columns
+
+
+async def test_api_repos_ensure_conversation_creates_with_requested_id():
+    session = _MemorySession()
+    repos = Repos(session)
+
+    conversation = await repos.ensure_conversation("conv_requested", "user-1")
+
+    assert conversation.id == "conv_requested"
+    assert await repos.get_conversation("conv_requested") is conversation

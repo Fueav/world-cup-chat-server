@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from app.core.enums import RunStatus
+from app.core.models import Conversation, Message
 from app.core.schemas import ChatRequest
 
 
@@ -43,6 +46,106 @@ def test_accepted_response_preserves_existing_fields_and_adds_route_type():
     assert accepted.conversation_id == "conv-1"
     assert accepted.agent_run_id == "run-1"
     assert accepted.route_type == "realtime"
+
+
+async def test_chat_returned_conversation_id_can_fetch_detail():
+    from app.api import deps
+    from app.api.main import create_app
+    from app.api.repos import Repos
+
+    class _MemorySession:
+        def __init__(self) -> None:
+            self.rows = {}
+
+        async def get(self, model, key):
+            return self.rows.get((model, key))
+
+        def add(self, entity) -> None:
+            self.rows[(type(entity), entity.id)] = entity
+
+        async def flush(self) -> None:
+            return None
+
+        async def refresh(self, entity) -> None:
+            now = datetime.now(UTC)
+            if isinstance(entity, Conversation):
+                entity.created_at = entity.created_at or now
+                entity.updated_at = entity.updated_at or now
+            if isinstance(entity, Message):
+                entity.created_at = entity.created_at or now
+                entity.meta = entity.meta or {}
+
+        async def commit(self) -> None:
+            return None
+
+    class _MemoryRepos(Repos):
+        async def get_conversation_with_messages(self, conversation_id):
+            conversation = await self.get_conversation(conversation_id)
+            if conversation is None:
+                return None
+            conversation.messages = [
+                entity
+                for (model, _), entity in self.session.rows.items()
+                if model is Message and entity.conversation_id == conversation_id
+            ]
+            return conversation
+
+    class _Lease:
+        async def renew(self):
+            return True
+
+        async def release(self):
+            return True
+
+    class _Lock:
+        async def acquire(self, *args, **kwargs):
+            return _Lease()
+
+    class _CapacitySlot:
+        async def release(self):
+            return None
+
+    class _Runner:
+        def try_acquire_capacity(self):
+            return _CapacitySlot()
+
+        async def run_chat(self, request, *, conversation_lease=None, capacity_slot=None):
+            if conversation_lease is not None:
+                await conversation_lease.release()
+            if capacity_slot is not None:
+                await capacity_slot.release()
+
+    app = create_app()
+    app.state.conversation_lock = _Lock()
+    app.state.realtime_runner = _Runner()
+    repos = _MemoryRepos(_MemorySession())
+
+    async def override_repos():
+        yield repos
+
+    app.dependency_overrides[deps.get_repos] = override_repos
+    headers = {"Authorization": "Bearer user-conversation-detail"}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        resp = await client.post(
+            "/chat",
+            headers=headers,
+            json={"message": "hello"},
+        )
+        assert resp.status_code == 202
+        conversation_id = resp.json()["conversation_id"]
+
+        detail = await client.get(
+            f"/conversations/{conversation_id}",
+            headers=headers,
+        )
+
+    assert detail.status_code == 200
+    assert detail.json()["id"] == conversation_id
+    assert detail.json()["messages"][0]["content"] == "hello"
 
 
 async def test_duplicate_idempotency_claim_replays_before_conversation_lock():

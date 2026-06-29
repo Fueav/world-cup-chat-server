@@ -78,6 +78,7 @@ async def test_postgres_idempotency_claim_blocks_then_replays_duplicate_key():
             assert not done, "duplicate INSERT should block on PG unique index"
 
             conversation = await repos.ensure_conversation(conv_id, user_id)
+            assert conversation.id == conv_id
             await repos.create_run(
                 run_id,
                 conversation.id,
