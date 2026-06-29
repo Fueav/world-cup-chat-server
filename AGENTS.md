@@ -86,7 +86,7 @@ Git pull deployment shape:
 ```bash
 envctl up \
   --name <owner>-world-cup-chat-server \
-  --git-url git@github.com:fei-moss/world-cup-chat-server.git \
+  --git-url git@github.com:Fueav/world-cup-chat-server.git \
   --git-ref <branch-or-commit> \
   --git-subdir dockerhost
 ```
@@ -96,7 +96,7 @@ Long-lived branch-space shape:
 ```bash
 envctl branch-space create \
   --name <owner>-world-cup-chat-server \
-  --git-url git@github.com:fei-moss/world-cup-chat-server.git \
+  --git-url git@github.com:Fueav/world-cup-chat-server.git \
   --git-ref <branch> \
   --git-subdir dockerhost
 

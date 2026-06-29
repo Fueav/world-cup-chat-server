@@ -38,7 +38,7 @@ envctl topology
 ```bash
 export PROJECT_DIR=/Users/chris/AiProject/world-cup-chat-server
 export ENV_NAME=<owner>-world-cup-chat-server
-export GIT_URL=git@github.com:fei-moss/world-cup-chat-server.git
+export GIT_URL=git@github.com:Fueav/world-cup-chat-server.git
 export GIT_REF=<branch-or-sha>
 
 git -C "$PROJECT_DIR" status --short

@@ -45,7 +45,7 @@ export REAPER_ENABLED=true
 
 envctl up \
   --name chris-world-cup-chat-server \
-  --git-url git@github.com:fei-moss/world-cup-chat-server.git \
+  --git-url git@github.com:Fueav/world-cup-chat-server.git \
   --git-ref <branch-or-sha> \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
