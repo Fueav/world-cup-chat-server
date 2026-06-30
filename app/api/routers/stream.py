@@ -1,8 +1,8 @@
 """流式网关路由:SSE 与 WebSocket。
 
-- GET /stream/{agent_run_id}: 用 sse-starlette 订阅 EventBus 频道 run:{id},
+- GET /api/v1/wc2026/stream/{agent_run_id}: 用 sse-starlette 订阅 EventBus 频道 run:{id},
   将 AgentEvent 逐条以 SSE 推送,收到 RUN_COMPLETED/ERROR 后结束。
-- WS /ws/{agent_run_id}: 等价的 WebSocket 推送。
+- WS /api/v1/wc2026/ws/{agent_run_id}: 等价的 WebSocket 推送。
 
 两者都从同一事件总线读取,API 层不缓存事件,断线后客户端可重连重订阅。
 WebSocket 不经 HTTP 中间件,故在握手阶段自行做轻量鉴权。
@@ -35,7 +35,10 @@ from app.db.session import async_session_factory
 
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["stream"])
+_WC2026_PREFIX = "/api/v1/wc2026"
+_WC2026_USER_QUERY = "user_uuid"
+
+router = APIRouter(prefix=_WC2026_PREFIX, tags=["stream"])
 
 # 终止事件:收到后结束流
 _TERMINAL_TYPES = {EventType.RUN_COMPLETED, EventType.ERROR}
@@ -105,16 +108,10 @@ async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
 
 
 def _ws_user_id(websocket: WebSocket) -> str | None:
-    """WebSocket 轻量鉴权:从 query token 或 header 提取 user id。"""
-    token = websocket.query_params.get("token")
-    if token:
-        return token
-    auth = websocket.headers.get("authorization")
-    if auth:
-        return auth.removeprefix("Bearer ").strip() or None
-    api_key = websocket.headers.get("x-api-key")
-    if api_key:
-        return api_key.strip() or None
+    """WebSocket 轻量鉴权:从 URL query user_uuid 提取 user id。"""
+    user_uuid = websocket.query_params.get(_WC2026_USER_QUERY)
+    if user_uuid and user_uuid.strip():
+        return user_uuid.strip()
     return None
 
 

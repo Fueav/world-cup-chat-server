@@ -1,7 +1,7 @@
 """核心对话入口路由。
 
-POST /chat 流程:
-1. 鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
+POST /api/v1/wc2026/chat?user_uuid=<uuid> 流程:
+1. URL user_uuid 鉴权/限流由中间件完成,此处校验请求体(Pydantic)。
 2. 创建或复用 conversation,写入用户消息。
 3. 生成 agent_run_id + trace_id,落库 AgentRun(PENDING) + TaskState(QUEUED)。
 4. 按 route_type 分发:默认 realtime 交给常驻 Async Runner,慢任务/批任务投递 Celery。
@@ -16,6 +16,7 @@ import asyncio
 import logging
 import math
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -45,7 +46,9 @@ from app.runtime.runner import (
 
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["chat"])
+_WC2026_PREFIX = "/api/v1/wc2026"
+
+router = APIRouter(prefix=_WC2026_PREFIX, tags=["chat"])
 
 # 投递任务的子任务类型(对应 task_state.task_type)
 _RUN_TASK_TYPE = "run"
@@ -100,7 +103,13 @@ async def create_chat(
         settings=settings,
         user_id=user,
     )
-    accepted = _accepted(conversation_id, run_id, trace_id, route_type=route_type)
+    accepted = _accepted(
+        conversation_id,
+        run_id,
+        trace_id,
+        user_uuid=user,
+        route_type=route_type,
+    )
     if idempotency_key:
         replay = await _claim_idempotency_or_replay(
             repos,
@@ -431,15 +440,17 @@ def _accepted(
     run_id: str,
     trace_id: str,
     *,
+    user_uuid: str,
     route_type: str | None = None,
 ) -> ChatAccepted:
     """构造 202 受理响应。"""
+    user_query = urlencode({"user_uuid": user_uuid})
     return ChatAccepted(
         conversation_id=conversation_id,
         agent_run_id=run_id,
         trace_id=trace_id,
         status=RunStatus.PENDING,
-        stream_url=f"/stream/{run_id}",
-        ws_url=f"/ws/{run_id}",
+        stream_url=f"{_WC2026_PREFIX}/stream/{run_id}?{user_query}",
+        ws_url=f"{_WC2026_PREFIX}/ws/{run_id}?{user_query}",
         route_type=route_type,
     )

@@ -70,7 +70,10 @@ def test_execute_mode_runs_commands_with_real_secret_file_path_but_redacted_audi
                 stdout='{"error_code":"STREAM_FALSE_NOT_SUPPORTED"}\n422',
                 stderr="",
             )
-        if command[:2] == ["curl", "-fsS"] and command[-1].endswith("/chat"):
+        if (
+            command[:2] == ["curl", "-fsS"]
+            and "/api/v1/wc2026/chat?user_uuid=" in command[-1]
+        ):
             return subprocess.CompletedProcess(
                 command,
                 0,
@@ -78,7 +81,10 @@ def test_execute_mode_runs_commands_with_real_secret_file_path_but_redacted_audi
                     {
                         "agent_run_id": "run-123",
                         "conversation_id": "conv-123",
-                        "stream_url": "/stream/run-123",
+                        "stream_url": (
+                            "/api/v1/wc2026/stream/run-123"
+                            "?user_uuid=dockerhost-release-smoke"
+                        ),
                     }
                 ),
                 stderr="",
@@ -137,6 +143,11 @@ def test_execute_mode_runs_commands_with_real_secret_file_path_but_redacted_audi
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
     assert audit["execute"] is True
     assert all(step["status"] == "passed" for step in audit["steps"])
+    assert all("X-API-Key" not in part for command in calls for part in command)
+    assert any(
+        command[-1].endswith("/api/v1/wc2026/chat?user_uuid=dockerhost-release-smoke")
+        for command in calls
+    )
 
     deploy_call = next(command for command in calls if command[:2] == ["envctl", "up"])
     assert f"GEMINI_API_KEY={secret_file}" in deploy_call
@@ -206,7 +217,10 @@ def test_execute_queries_run_status_when_sse_lacks_terminal_event():
                 stdout='{"error_code":"STREAM_FALSE_NOT_SUPPORTED"}\n422',
                 stderr="",
             )
-        if command[:2] == ["curl", "-fsS"] and command[-1].endswith("/chat"):
+        if (
+            command[:2] == ["curl", "-fsS"]
+            and "/api/v1/wc2026/chat?user_uuid=" in command[-1]
+        ):
             return subprocess.CompletedProcess(
                 command,
                 0,
@@ -214,7 +228,10 @@ def test_execute_queries_run_status_when_sse_lacks_terminal_event():
                     {
                         "agent_run_id": "run-456",
                         "conversation_id": "conv-456",
-                        "stream_url": "/stream/run-456",
+                        "stream_url": (
+                            "/api/v1/wc2026/stream/run-456"
+                            "?user_uuid=dockerhost-release-smoke"
+                        ),
                     }
                 ),
                 stderr="",
@@ -244,7 +261,11 @@ def test_execute_queries_run_status_when_sse_lacks_terminal_event():
     audit = json.loads(stdout)
     assert _step(audit, "sse smoke")["status"] == "failed"
     assert _step(audit, "run status")["status"] == "passed"
-    assert any(command[-1] == "https://api.example.test/runs/run-456" for command in calls)
+    assert any(
+        command[-1]
+        == "https://api.example.test/api/v1/wc2026/runs/run-456?user_uuid=dockerhost-release-smoke"
+        for command in calls
+    )
     assert _step(audit, "worker logs")["status"] == "skipped"
 
 
@@ -260,7 +281,10 @@ def test_execute_blocks_release_when_sse_reports_failed_terminal_event():
                 stdout='{"error_code":"STREAM_FALSE_NOT_SUPPORTED"}\n422',
                 stderr="",
             )
-        if command[:2] == ["curl", "-fsS"] and command[-1].endswith("/chat"):
+        if (
+            command[:2] == ["curl", "-fsS"]
+            and "/api/v1/wc2026/chat?user_uuid=" in command[-1]
+        ):
             return subprocess.CompletedProcess(
                 command,
                 0,
@@ -268,7 +292,10 @@ def test_execute_blocks_release_when_sse_reports_failed_terminal_event():
                     {
                         "agent_run_id": "run-failed",
                         "conversation_id": "conv-failed",
-                        "stream_url": "/stream/run-failed",
+                        "stream_url": (
+                            "/api/v1/wc2026/stream/run-failed"
+                            "?user_uuid=dockerhost-release-smoke"
+                        ),
                     }
                 ),
                 stderr="",
@@ -300,7 +327,11 @@ def test_execute_blocks_release_when_sse_reports_failed_terminal_event():
     assert "failed or cancelled" in _step(audit, "sse smoke")["error"]
     assert _step(audit, "run status")["status"] == "passed"
     assert _step(audit, "worker logs")["status"] == "skipped"
-    assert any(command[-1] == "https://api.example.test/runs/run-failed" for command in calls)
+    assert any(
+        command[-1]
+        == "https://api.example.test/api/v1/wc2026/runs/run-failed?user_uuid=dockerhost-release-smoke"
+        for command in calls
+    )
 
 
 def test_rollback_and_destroy_default_to_safe_dry_run_plans():

@@ -1,8 +1,9 @@
 """Local realtime chat TTFT benchmark.
 
 This script drives the real FastAPI service over HTTP and SSE. It measures the
-client-observable time from starting POST /chat until the first TOKEN SSE event
-for each run, using local Postgres and Redis behind the API service.
+client-observable time from starting the WC2026 chat endpoint until the first
+TOKEN SSE event for each run, using local Postgres and Redis behind the API
+service.
 """
 
 from __future__ import annotations
@@ -14,8 +15,11 @@ import statistics
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import httpx
+
+WC2026_API_PREFIX = "/api/v1/wc2026"
 
 
 @dataclass
@@ -64,8 +68,7 @@ async def _read_sse_until_done(
     event_name: str | None = None
     async with client.stream(
         "GET",
-        f"{base_url}/stream/{run_id}",
-        headers={"X-API-Key": user_id},
+        _wc2026_url(base_url, f"/stream/{run_id}", user_id),
     ) as response:
         response.raise_for_status()
         async for raw_line in response.aiter_lines():
@@ -101,10 +104,9 @@ async def _one_run(
     started_at = time.perf_counter()
     try:
         response = await client.post(
-            f"{base_url}/chat",
+            _wc2026_url(base_url, "/chat", user_id),
             headers={
                 "Content-Type": "application/json",
-                "X-API-Key": user_id,
                 "Idempotency-Key": f"bench-{run_prefix}-{index}",
             },
             json={
@@ -161,6 +163,11 @@ async def _one_run(
             total_ms=(time.perf_counter() - started_at) * 1000,
             error=repr(exc),
         )
+
+
+def _wc2026_url(base_url: str, path: str, user_uuid: str) -> str:
+    encoded_user = quote(user_uuid, safe="")
+    return f"{base_url}{WC2026_API_PREFIX}{path}?user_uuid={encoded_user}"
 
 
 async def _run_benchmark(args: argparse.Namespace) -> dict[str, Any]:

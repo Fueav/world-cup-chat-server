@@ -1,8 +1,8 @@
 """会话管理路由。
 
-- POST /conversations: 创建新会话。
-- GET /conversations/{id}: 获取会话详情(含消息)。
-- GET /conversations: 分页列出当前用户的会话。
+- POST /api/v1/wc2026/conversations: 创建新会话。
+- GET /api/v1/wc2026/conversations/{id}: 获取会话详情(含消息)。
+- GET /api/v1/wc2026/conversations: 分页列出当前用户的会话。
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from app.core.schemas import ConversationOut, MessageOut
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/conversations", tags=["conversations"])
+router = APIRouter(prefix="/api/v1/wc2026/conversations", tags=["conversations"])
 
 # 列表分页上限,防止无界查询
 _MAX_PAGE_SIZE = 100

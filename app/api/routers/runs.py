@@ -1,6 +1,6 @@
 """运行状态查询路由。
 
-- GET /runs/{id}: 返回某次 Agent 运行的轻量状态(RunStatusOut)。
+- GET /api/v1/wc2026/runs/{id}: 返回某次 Agent 运行的轻量状态(RunStatusOut)。
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from app.core.schemas import RunStatusOut
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/runs", tags=["runs"])
+router = APIRouter(prefix="/api/v1/wc2026/runs", tags=["runs"])
 
 
 @router.get("/{agent_run_id}", response_model=RunStatusOut)

@@ -1,7 +1,8 @@
 """请求中间件:鉴权、限流、trace_id 注入。
 
 职责:
-- 鉴权:从 Authorization Bearer 或 X-API-Key 取 user_id,受保护路径缺失则 401。
+- 鉴权:WC2026 chat-flow 从 URL user_uuid 取 user_id,其他受保护路径保留
+  Authorization Bearer 或 X-API-Key。
 - 限流:对写入类路径按 user_id 做滑动窗口限流,超限 429。
 - trace_id:每请求生成或透传 X-Trace-Id,注入日志上下文并回写响应头。
 
@@ -23,6 +24,8 @@ logger = get_logger(__name__)
 
 _BEARER_PREFIX = "Bearer "
 _TRACE_HEADER = "X-Trace-Id"
+_WC2026_PREFIX = "/api/v1/wc2026"
+_WC2026_USER_QUERY = "user_uuid"
 
 # 无需鉴权即可访问的路径前缀(健康检查与文档)
 _PUBLIC_PREFIXES = (
@@ -33,12 +36,19 @@ _PUBLIC_PREFIXES = (
     "/redoc",
     "/openapi.json",
 )
+_OBSOLETE_CHAT_FLOW_PATHS = ("/chat", "/conversations")
+_OBSOLETE_CHAT_FLOW_PREFIXES = ("/stream/", "/ws/", "/runs/", "/conversations/")
 # 需要执行限流的路径前缀(写入/触发类)
-_RATE_LIMITED_PREFIXES = ("/chat",)
+_RATE_LIMITED_PREFIXES = (f"{_WC2026_PREFIX}/chat",)
 
 
 def _extract_user_id(request: Request) -> str | None:
-    """从请求头解析 user_id,缺失返回 None。"""
+    """解析 user_id,缺失返回 None。"""
+    if request.url.path.startswith(_WC2026_PREFIX):
+        user_uuid = request.query_params.get(_WC2026_USER_QUERY)
+        if user_uuid and user_uuid.strip():
+            return user_uuid.strip()
+        return None
     auth = request.headers.get("authorization")
     if auth and auth.startswith(_BEARER_PREFIX):
         token = auth[len(_BEARER_PREFIX) :].strip()
@@ -53,6 +63,13 @@ def _extract_user_id(request: Request) -> str | None:
 def _is_public(path: str) -> bool:
     """判断路径是否豁免鉴权。"""
     return any(path.startswith(p) for p in _PUBLIC_PREFIXES)
+
+
+def _is_obsolete_chat_flow(path: str) -> bool:
+    """旧 chat-flow 路径已废弃,透传到路由层返回 404。"""
+    return path in _OBSOLETE_CHAT_FLOW_PATHS or any(
+        path.startswith(p) for p in _OBSOLETE_CHAT_FLOW_PREFIXES
+    )
 
 
 def _needs_rate_limit(path: str) -> bool:
@@ -82,11 +99,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         """解析并校验 user_id。"""
-        if _is_public(request.url.path):
+        if _is_public(request.url.path) or _is_obsolete_chat_flow(request.url.path):
             return await call_next(request)
         user_id = _extract_user_id(request)
         if not user_id:
-            return _json_error(401, "缺少鉴权凭证(Authorization Bearer 或 X-API-Key)")
+            detail = (
+                "缺少 user_uuid"
+                if request.url.path.startswith(_WC2026_PREFIX)
+                else "缺少鉴权凭证(Authorization Bearer 或 X-API-Key)"
+            )
+            return _json_error(401, detail)
         request.state.user_id = user_id
         return await call_next(request)
 

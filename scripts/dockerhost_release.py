@@ -17,10 +17,12 @@ import re
 import subprocess
 import sys
 from typing import Callable, TextIO
+from urllib.parse import quote
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GIT_SUBDIR = "dockerhost"
+WC2026_API_PREFIX = "/api/v1/wc2026"
 SECRET_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?i)\b([A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD)[A-Z0-9_]*)"
@@ -314,6 +316,9 @@ def _envctl_up_step(
 
 def _smoke_steps(args: argparse.Namespace) -> list[Step]:
     base_url = args.base_url.rstrip("/")
+    chat_url = _wc2026_url(base_url, "/chat", args.smoke_user)
+    run_status_url = _wc2026_url(base_url, "/runs/{agent_run_id}", args.smoke_user)
+    display_run_status_url = _wc2026_url(base_url, "/runs/<agent-run-id>", args.smoke_user)
     chat_body = json.dumps(
         {
             "message": "smoke: DockerHost async chat connectivity",
@@ -341,11 +346,9 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "\n%{http_code}",
                 "-H",
                 "Content-Type: application/json",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
                 "-d",
                 stream_false_body,
-                f"{base_url}/chat",
+                chat_url,
             ],
             kind="stream_false",
         ),
@@ -356,11 +359,9 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "-fsS",
                 "-H",
                 "Content-Type: application/json",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
                 "-d",
                 chat_body,
-                f"{base_url}/chat",
+                chat_url,
             ],
             kind="chat_accept",
         ),
@@ -372,8 +373,6 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "-N",
                 "--max-time",
                 str(args.sse_timeout),
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
                 f"{base_url}{{stream_url}}",
             ],
             display_command=[
@@ -382,8 +381,6 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
                 "-N",
                 "--max-time",
                 str(args.sse_timeout),
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
                 f"{base_url}<stream-url-from-chat>",
             ],
             kind="sse",
@@ -393,16 +390,12 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
             [
                 args.curl_bin,
                 "-fsS",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
-                f"{base_url}/runs/{{agent_run_id}}",
+                run_status_url,
             ],
             display_command=[
                 args.curl_bin,
                 "-fsS",
-                "-H",
-                f"X-API-Key: {args.smoke_user}",
-                f"{base_url}/runs/<agent-run-id>",
+                display_run_status_url,
             ],
         ),
         Step(
@@ -432,6 +425,11 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
             ],
         ),
     ]
+
+
+def _wc2026_url(base_url: str, path: str, user_uuid: str) -> str:
+    encoded_user = quote(user_uuid, safe="")
+    return f"{base_url}{WC2026_API_PREFIX}{path}?user_uuid={encoded_user}"
 
 
 def _destroy_steps(args: argparse.Namespace) -> list[Step]:
@@ -520,9 +518,13 @@ def _validate_completed_step(
         run_id = payload.get("agent_run_id")
         if not isinstance(run_id, str) or not run_id:
             return "accepted chat smoke missing agent_run_id"
-        stream_url = payload.get("stream_url") or f"/stream/{run_id}"
+        stream_url = payload.get("stream_url")
         if not isinstance(stream_url, str) or not stream_url.startswith("/"):
             return "accepted chat smoke missing stream_url"
+        if not stream_url.startswith(f"{WC2026_API_PREFIX}/stream/"):
+            return "accepted chat smoke returned non-WC2026 stream_url"
+        if "user_uuid=" not in stream_url:
+            return "accepted chat smoke stream_url missing user_uuid"
         context["agent_run_id"] = run_id
         context["stream_url"] = stream_url
         conversation_id = payload.get("conversation_id")

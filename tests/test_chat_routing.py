@@ -41,11 +41,22 @@ def test_runtime_mode_celery_forces_batch_route():
 def test_accepted_response_preserves_existing_fields_and_adds_route_type():
     from app.api.routers.chat import _accepted
 
-    accepted = _accepted("conv-1", "run-1", "trace-1", route_type="realtime")
+    accepted = _accepted(
+        "conv-1",
+        "run-1",
+        "trace-1",
+        user_uuid="user-url-1",
+        route_type="realtime",
+    )
 
     assert accepted.conversation_id == "conv-1"
     assert accepted.agent_run_id == "run-1"
     assert accepted.route_type == "realtime"
+    assert (
+        accepted.stream_url
+        == "/api/v1/wc2026/stream/run-1?user_uuid=user-url-1"
+    )
+    assert accepted.ws_url == "/api/v1/wc2026/ws/run-1?user_uuid=user-url-1"
 
 
 async def test_chat_returned_conversation_id_can_fetch_detail():
@@ -124,28 +135,77 @@ async def test_chat_returned_conversation_id_can_fetch_detail():
         yield repos
 
     app.dependency_overrides[deps.get_repos] = override_repos
-    headers = {"Authorization": "Bearer user-conversation-detail"}
+    user_uuid = "user-conversation-detail"
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://testserver",
     ) as client:
         resp = await client.post(
-            "/chat",
-            headers=headers,
+            f"/api/v1/wc2026/chat?user_uuid={user_uuid}",
             json={"message": "hello"},
         )
         assert resp.status_code == 202
-        conversation_id = resp.json()["conversation_id"]
+        payload = resp.json()
+        conversation_id = payload["conversation_id"]
+        assert payload["stream_url"].startswith("/api/v1/wc2026/stream/")
+        assert payload["stream_url"].endswith(f"?user_uuid={user_uuid}")
+        assert payload["ws_url"].startswith("/api/v1/wc2026/ws/")
+        assert payload["ws_url"].endswith(f"?user_uuid={user_uuid}")
 
         detail = await client.get(
-            f"/conversations/{conversation_id}",
-            headers=headers,
+            f"/api/v1/wc2026/conversations/{conversation_id}?user_uuid={user_uuid}",
         )
 
     assert detail.status_code == 200
     assert detail.json()["id"] == conversation_id
     assert detail.json()["messages"][0]["content"] == "hello"
+
+
+async def test_wc2026_chat_requires_url_user_uuid_and_does_not_accept_header_only():
+    from app.api.main import create_app
+
+    app = create_app()
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        missing = await client.post(
+            "/api/v1/wc2026/chat",
+            json={"message": "hello"},
+        )
+        header_only = await client.post(
+            "/api/v1/wc2026/chat",
+            headers={"Authorization": "Bearer header-user"},
+            json={"message": "hello"},
+        )
+
+    assert missing.status_code == 401
+    assert header_only.status_code == 401
+
+
+async def test_legacy_chat_route_is_not_available():
+    from app.api.main import create_app
+
+    app = create_app()
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/chat",
+            headers={"Authorization": "Bearer legacy-user"},
+            json={"message": "hello"},
+        )
+        anonymous_response = await client.post(
+            "/chat",
+            json={"message": "hello"},
+        )
+
+    assert response.status_code == 404
+    assert anonymous_response.status_code == 404
 
 
 async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
@@ -167,8 +227,8 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
                 "agent_run_id": "run-existing",
                 "trace_id": "trace-existing",
                 "status": "PENDING",
-                "stream_url": "/stream/run-existing",
-                "ws_url": "/ws/run-existing",
+                "stream_url": "/api/v1/wc2026/stream/run-existing?user_uuid=user-1",
+                "ws_url": "/api/v1/wc2026/ws/run-existing?user_uuid=user-1",
                 "route_type": "realtime",
             }
 
