@@ -496,6 +496,7 @@ _STREAMING_OUTPUT_TAIL_CHARS = max(
 )
 _STREAMING_STYLE_MAX_CHARS = 980
 _MARKDOWN_TABLE_LINE_RE = re.compile(r"^\s*\|.+\|\s*$")
+_MARKDOWN_TABLE_SEPARATOR_RE = re.compile(r"^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$")
 _MARKDOWN_HORIZONTAL_RULE_RE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
 _MARKDOWN_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
 
@@ -605,7 +606,7 @@ class StreamingOutputGuardrail:
     def _filter_style_line(self, line: str) -> str:
         stripped = line.strip()
         if _MARKDOWN_TABLE_LINE_RE.match(stripped):
-            return ""
+            return _markdown_table_line_to_text(stripped)
         if _MARKDOWN_HORIZONTAL_RULE_RE.match(stripped):
             return ""
         if not stripped:
@@ -1020,6 +1021,20 @@ def _clip_to_terminal_text(text: str) -> str:
     if best >= max(120, int(len(stripped) * 0.6)):
         return stripped[: best + 1]
     return f"{stripped.rstrip(' ,，、:：;；-')}."
+
+
+def _markdown_table_line_to_text(line: str) -> str:
+    """Convert a Markdown table row to plain text while preserving facts."""
+    if _MARKDOWN_TABLE_SEPARATOR_RE.match(line):
+        return ""
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    cells = [cell for cell in cells if cell]
+    if not cells:
+        return ""
+    if len(cells) == 1:
+        return f"- {cells[0]}\n"
+    head, *tail = cells
+    return f"- {head}: {'; '.join(tail)}\n"
 
 
 def _contains_output_policy_leak(value: str) -> bool:

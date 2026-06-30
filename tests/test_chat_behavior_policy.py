@@ -427,6 +427,8 @@ def test_streaming_output_guardrail_removes_markdown_table_lines():
     safe_text = "".join(outputs)
     assert "| 判定 | 条件 |" not in safe_text
     assert "|---|---|" not in safe_text
+    assert "value_bet" in safe_text
+    assert "4pp 且 1.70-2.40" in safe_text
     assert "结论:当前只能解释公开规则" in safe_text
     assert "风险提示:概率不是保证" in safe_text
 

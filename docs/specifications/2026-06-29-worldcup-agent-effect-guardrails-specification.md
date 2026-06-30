@@ -174,7 +174,7 @@
   - Prompt includes Section 2 answer frameworks for recommendation reason, odds/no-recommendation reason, strength-index calculation, weight rationale, lineup repricing, expected-goals/win-rate values, and model-principle coefficients.
   - Prompt includes strength-index, expected-goals/probability, model-principle, and style constraints from the product document.
   - Prompt enforces concise answer style: conclusion first, 3-5 short bullets by default, and no default Markdown tables or long section scaffolding unless the user explicitly asks for detail.
-  - Streaming output removes default Markdown table/horizontal-rule scaffolding and clamps verbose default answers without weakening hidden-instruction, language, direct-betting, guaranteed-profit, or truncation guardrails.
+  - Streaming output converts default Markdown table rows into plain short lines, removes table/horizontal-rule scaffolding, and clamps verbose default answers without weakening hidden-instruction, language, direct-betting, guaranteed-profit, or truncation guardrails.
   - Input guardrail refuses direct betting-decision prompts, guaranteed-outcome prompts, locked-content bypass prompts, model-scope-out-of-bounds prompts, and platform/account support prompts.
   - Output guardrail blocks direct buy/sell advice and guaranteed-profit/outcome language.
   - Allowed market, recommendation, EV, odds, or Polymarket explanations receive a deterministic risk footer when the model omitted one.
