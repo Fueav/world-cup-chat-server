@@ -157,9 +157,9 @@ class Wc2026AgentDataService:
         """Return central public WC2026 model methodology."""
         if self._client is None:
             return {
-                "ok": False,
-                "status": "central_unavailable",
-                "message": "WC2026_AGENT_DATA_CLIENT_UNAVAILABLE",
+                "ok": True,
+                "status": "local_fallback",
+                "payload": _public_methodology_payload(locale=locale),
             }
         try:
             envelope = await self._client.fetch_methodology(locale=locale)
@@ -251,4 +251,46 @@ def _locked_current_match_payload(
         },
         "recommendation": {"status": "locked"},
         "strength_index": {"dimensions": []},
+    }
+
+
+def _public_methodology_payload(*, locale: str) -> dict[str, Any]:
+    """Return public WC2026 methodology constants without match-specific values."""
+    return {
+        "schema_version": "local-public-2026-06-30",
+        "source": "local_public_fallback",
+        "locale": locale,
+        "scope": "public_methodology_only_no_current_match_values",
+        "recommendation_triggers": {
+            "probability_gap_threshold_pp": 4,
+            "decimal_odds_range": [1.70, 2.40],
+            "market_reference": "Polymarket implied probability and executable CLOB odds",
+            "statuses": ["value_bet", "probe_bet", "no-bet"],
+            "risk_boundary": "explain trigger rules only; not betting advice",
+        },
+        "strength_index": {
+            "dimensions_count": 9,
+            "score_scale": "0-100",
+            "aggregation": "score nine independent dimensions and combine by weights",
+            "adjustments": ["opponent Elo rating", "SOS correction"],
+            "current_match_scores_available": False,
+        },
+        "probability_model": {
+            "expected_goals": "expected_goals_lambda enters a Poisson score grid",
+            "wdl_probability": "home/draw/away probabilities are aggregated from the score grid",
+        },
+        "coefficients": {
+            "total_goals_scale_k": 0.943,
+            "total_goals_scale_k_meaning": (
+                "total-goals scaling/calibration coefficient fitted from historical international matches"
+            ),
+            "low_score_rho": -0.15,
+            "low_score_rho_meaning": (
+                "low-score score-correlation correction affecting 0-0, 1-0, 0-1, and 1-1"
+            ),
+        },
+        "stage_calibration": {
+            "group_stage_confidence_contraction": "group-stage probabilities use confidence contraction",
+            "knockout_draw_weight_adjustment": "knockout-stage modeling adjusts draw weight for stage dynamics",
+        },
     }

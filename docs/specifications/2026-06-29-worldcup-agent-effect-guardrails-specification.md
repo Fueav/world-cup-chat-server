@@ -77,6 +77,7 @@
   - Deterministic input refusals remain successful assistant answers and bypass model/tool execution.
   - Output guardrail replacements remain safe terminal content.
   - If WC2026 central agent-data API is not configured, current-match tools fail closed with sanitized `central_unavailable` content and must not fabricate current-match probabilities, odds, strength scores, recommendations, or paid values.
+  - Public methodology may use a local fallback containing only stable public rules and constants, such as 4pp trigger threshold, 1.70-2.40 odds range, 9D/0-100 strength-index framework, `k=0.943`, `rho=-0.15`, and stage-calibration semantics.
 - Compatibility and migration expectations:
   - Existing clients, routes, events, RAG admin behavior, and conversation APIs remain compatible.
   - Existing World Cup behavior cases remain valid unless narrowed by product guardrails.
@@ -120,7 +121,7 @@
 - Modules/files expected to change:
   - `app/runtime/chat_behavior.py`: policy version, identity, product-effect guardrails, output guardrails, and safe responses.
   - `app/runtime/orchestrator.py`: raw model text tracking for output-integrity checks when streamed display text is compacted.
-  - `app/runtime/wc2026_agent_data.py`: central-data service construction and sanitized fail-closed behavior when no base URL is configured.
+  - `app/runtime/wc2026_agent_data.py`: central-data service construction, sanitized current-match fail-closed behavior when no base URL is configured, and local public-methodology fallback.
   - `dockerhost/compose.yaml` and `scripts/check_dockerhost_production_config.py`: provider default alignment for API and worker services.
   - `tests/test_chat_behavior_policy.py`: focused policy and guardrail tests.
   - `tests/chat_eval/golden_cases.jsonl`: product examples and effect-tuning oracles.

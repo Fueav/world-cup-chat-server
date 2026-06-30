@@ -113,6 +113,29 @@ async def test_build_service_without_base_url_returns_client_unavailable():
     assert result["message"] == "WC2026_AGENT_DATA_CLIENT_UNAVAILABLE"
 
 
+async def test_methodology_without_base_url_returns_public_fallback():
+    from app.core.config import Settings
+    from app.runtime.wc2026_agent_data import build_wc2026_agent_data_service
+
+    service = build_wc2026_agent_data_service(
+        Settings(_env_file=None, wc2026_agent_api_base_url="")
+    )
+
+    result = await service.get_methodology()
+
+    assert result["ok"] is True
+    assert result["status"] == "local_fallback"
+    payload = result["payload"]
+    assert payload["recommendation_triggers"]["probability_gap_threshold_pp"] == 4
+    assert payload["recommendation_triggers"]["decimal_odds_range"] == [1.70, 2.40]
+    assert payload["strength_index"]["dimensions_count"] == 9
+    assert payload["strength_index"]["score_scale"] == "0-100"
+    assert payload["coefficients"]["total_goals_scale_k"] == 0.943
+    assert payload["coefficients"]["low_score_rho"] == -0.15
+    assert "group_stage_confidence_contraction" in payload["stage_calibration"]
+    assert "knockout_draw_weight_adjustment" in payload["stage_calibration"]
+
+
 async def test_central_match_context_error_returns_structured_failure():
     from app.runtime.wc2026_agent_data import Wc2026AgentDataService
 
