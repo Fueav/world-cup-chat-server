@@ -45,8 +45,8 @@ https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org
 | Deployed Git ref | `main`；精确 commit 以 DockerHost `envctl status` 为准。 |
 | Provider | Z.AI `glm-5.2` |
 | Provider readiness | `/readyz` reports `provider_secret=configured` |
-| WC2026 central API key | 当前 DockerHost 环境尚未注入。Chat Server 支持无 key 直连；如果中心化环境要求 `wc-api-key`，则需注入后才能访问 paid match-context。 |
-| Verified at | `2026-06-30 15:47 Asia/Shanghai` |
+| WC2026 central API | 当前 DockerHost 环境使用 `https://moss-dev.moss.site/api/v1`，并已通过 DockerHost secret 注入 `WC2026_AGENT_API_KEY`。 |
+| Verified at | `2026-06-30 16:24 Asia/Shanghai` |
 
 下文示例统一使用：
 
@@ -172,14 +172,14 @@ Chat Server 通过中心化 WC2026 Agent 数据接口给模型提供两类只读
 运行环境需要配置：
 
 ```bash
-WC2026_AGENT_API_BASE_URL=http://viki-api:8080
+WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1
 WC2026_AGENT_API_KEY=<可选；中心化环境要求 wc-api-key 时配置>
-WC2026_AGENT_API_TIMEOUT_S=3
+WC2026_AGENT_API_TIMEOUT_S=10
 ```
 
 `WC2026_AGENT_API_BASE_URL` 可以填 origin base，例如
 `http://viki-api:8080`；也兼容同事文档里的 API base，例如
-`http://viki-api:8080/api/v1`。Chat Server 会保证最终请求路径是：
+`https://moss-dev.moss.site/api/v1`。Chat Server 会保证最终请求路径是：
 
 ```text
 /api/v1/wc2026/agent/methodology
@@ -191,9 +191,11 @@ WC2026_AGENT_API_TIMEOUT_S=3
 如果目标中心化环境要求 key，则缺少或错误 key 会由中心化接口返回 403，Chat Server
 会 fail-closed。
 当前 `chris-world-cup-chat-server` DockerHost 环境已配置
-`WC2026_AGENT_API_BASE_URL=http://viki-api:8080`，但尚未注入
-`WC2026_AGENT_API_KEY`。如果该内网入口允许无 key 调用，则无需额外配置；如果该入口仍要求
-`wc-api-key`，已解锁场次调用 paid `match-context` 会 fail-closed，不会编造或泄露内部错误。
+`WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1`，并已通过
+DockerHost secret 注入 `WC2026_AGENT_API_KEY`；真实 key 不写入仓库或文档。
+已在 DockerHost 环境验证 `methodology` 和 `match-context/81|82|83` 均返回
+`code=200`。如果目标入口缺少或拒绝 `wc-api-key`，已解锁场次调用 paid
+`match-context` 会 fail-closed，不会编造或泄露内部错误。
 中心化接口网络错误、超时或 transport 异常会在 Agent 工具结果中统一返回
 `WC2026_AGENT_DATA_UNAVAILABLE`，不会把内部 URL、host 或异常字符串透传给模型；服务端日志只保留结构化错误类型和定位字段。
 

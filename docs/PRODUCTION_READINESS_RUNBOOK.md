@@ -49,8 +49,8 @@ export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=512
 export WORKER_POOL=prefork
 export WORKER_CONCURRENCY=2
 export REAPER_ENABLED=true
-export WC2026_AGENT_API_BASE_URL=http://viki-api:8080
-export WC2026_AGENT_API_TIMEOUT_S=3
+export WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1
+export WC2026_AGENT_API_TIMEOUT_S=10
 
 envctl up \
   --name chris-world-cup-chat-server \
@@ -58,11 +58,13 @@ envctl up \
   --git-ref <branch-or-sha> \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --secret-env WC2026_AGENT_API_KEY
 ```
 
-如果目标中心化 WC2026 环境要求 `wc-api-key`,再额外传
-`--secret-env WC2026_AGENT_API_KEY`；允许无 key 的内网入口不需要该 secret。
+如果目标中心化 WC2026 环境允许无 key 内网直连，可以省略
+`--secret-env WC2026_AGENT_API_KEY`。当前 DockerHost dev 环境走
+`https://moss-dev.moss.site/api/v1`，需要该 secret。
 
 For correctness-first smoke fallback:
 

@@ -156,8 +156,8 @@ export RAG_ENABLED=true
 export RAG_VECTOR_STORE=pgvector
 export EMBEDDING_PROVIDER=gemini
 export EMBEDDING_MODEL=gemini-embedding-2
-export WC2026_AGENT_API_BASE_URL=http://viki-api:8080
-export WC2026_AGENT_API_TIMEOUT_S=3
+export WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1
+export WC2026_AGENT_API_TIMEOUT_S=10
 
 envctl up \
   --name "$ENV_NAME" \
@@ -165,7 +165,8 @@ envctl up \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --secret-env WC2026_AGENT_API_KEY
 ```
 
 当平台或操作习惯要求文件注入时,使用 `--secret-file KEY=PATH` 指向仓库外的私有文件。路径可以进入命令记录,文件内容不可以。
@@ -180,7 +181,7 @@ envctl up \
   --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file>
 ```
 
-如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。WC2026 Agent 数据接口还需要普通环境变量 `WC2026_AGENT_API_BASE_URL` 和可选 `WC2026_AGENT_API_TIMEOUT_S`;如果目标中心化环境要求 `wc-api-key`,密钥只通过 `WC2026_AGENT_API_KEY` secret 注入。
+如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。WC2026 Agent 数据接口还需要普通环境变量 `WC2026_AGENT_API_BASE_URL` 和可选 `WC2026_AGENT_API_TIMEOUT_S`;如果目标中心化环境要求 `wc-api-key`,密钥只通过 `WC2026_AGENT_API_KEY` secret 注入,不要把真实值写进仓库或命令日志。
 
 ## 5. Git Ref Deploy
 
