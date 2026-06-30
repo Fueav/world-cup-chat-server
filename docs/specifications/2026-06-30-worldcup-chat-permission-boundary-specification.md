@@ -33,7 +33,8 @@
 - State model:
   - `current_match.is_unlocked=true` means Block B model probability, Block D recommendation, and Power Index 9D numeric values are all unlocked for the current match.
   - `entitlements.has_all=true` also unlocks all three current-match paid blocks.
-  - Methodology remains public in product terms, is fetched through the central methodology endpoint, and still requires service API key.
+  - Methodology remains public in product terms and is fetched through the central methodology endpoint.
+  - If a central environment requires service API key authentication, Chat Server sends `wc-api-key` when `WC2026_AGENT_API_KEY` is configured; if not configured, it attempts no-key direct access and lets the central service fail closed if that environment requires a key.
   - Central recommendation `market_side` is limited to 1X2 and exact-score best-edge markets: `home_win`, `away_win`, `draw`, `score_0_0` through `score_3_3`, and `score_any_other`.
   - Chat Server must not expect handicap, over, or under recommendation markets from the central match-context payload; missing odds for a selected best-edge market is represented as `missing_market_price`.
 - Ownership and identity rules:
@@ -42,7 +43,7 @@
   - Central data service owns raw model snapshots.
 - Permissions/authentication:
   - Chat Server trusts `wc2026_context` only because it is not public and is called by moss-api over trusted infrastructure.
-  - The central-data client must fail closed if base URL or API key is absent.
+  - The central-data client must fail closed if base URL is absent. API key is optional and only sent when configured.
   - Raw full paid payload must not enter LLM context or persistent tool logs.
 - Empty, error, retry, timeout, duplicate, and partial-failure behavior:
   - Missing `wc2026_context` or `current_match_id` is rejected for WC2026 chat.
@@ -176,8 +177,8 @@
   - `ConversationOut` adds a nullable field; existing clients that ignore unknown JSON fields remain compatible.
 - Operational:
   - No raw full paid payload is written to `ToolCallLog`.
-  - DockerHost api/worker services can receive `WC2026_AGENT_API_BASE_URL`, `WC2026_AGENT_API_KEY`, and `WC2026_AGENT_API_TIMEOUT_S`.
-  - API key is read from configuration, never hard-coded.
+  - DockerHost api/worker services can receive `WC2026_AGENT_API_BASE_URL`, optional `WC2026_AGENT_API_KEY`, and `WC2026_AGENT_API_TIMEOUT_S`.
+  - When configured, API key is read from configuration, never hard-coded.
 - Evidence artifacts:
   - This specification and matching implementation plan.
   - RED/GREEN focused tests.

@@ -42,10 +42,10 @@ https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org
 | DockerHost environment | `chris-world-cup-chat-server` |
 | DockerHost web service | `api` |
 | Base URL | `https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org` |
-| Git commit | `73a38c1eff192bbc0fdc46851586ff0aa178af41` |
+| Deployed Git ref | `main`；精确 commit 以 DockerHost `envctl status` 为准。 |
 | Provider | Z.AI `glm-5.2` |
 | Provider readiness | `/readyz` reports `provider_secret=configured` |
-| WC2026 central API key | 当前 DockerHost 环境尚未注入；中心化 key 注入前，解锁场次的 paid match-context 工具会 fail-closed。 |
+| WC2026 central API key | 当前 DockerHost 环境尚未注入。Chat Server 支持无 key 直连；如果中心化环境要求 `wc-api-key`，则需注入后才能访问 paid match-context。 |
 | Verified at | `2026-06-30 15:47 Asia/Shanghai` |
 
 下文示例统一使用：
@@ -173,7 +173,7 @@ Chat Server 通过中心化 WC2026 Agent 数据接口给模型提供两类只读
 
 ```bash
 WC2026_AGENT_API_BASE_URL=http://viki-api:8080
-WC2026_AGENT_API_KEY=<由中心化数据层提供>
+WC2026_AGENT_API_KEY=<可选；中心化环境要求 wc-api-key 时配置>
 WC2026_AGENT_API_TIMEOUT_S=3
 ```
 
@@ -186,11 +186,14 @@ WC2026_AGENT_API_TIMEOUT_S=3
 /api/v1/wc2026/agent/match-context/{match_id}
 ```
 
-`WC2026_AGENT_API_KEY` 是机器对机器密钥，必须用部署 secret 注入，不要提交到仓库或文档。
+`WC2026_AGENT_API_KEY` 是可选机器对机器密钥。配置后 Chat Server 会在中心化请求里发送
+`wc-api-key` header；为空时 Chat Server 不发送该 header，直接请求中心化接口。
+如果目标中心化环境要求 key，则缺少或错误 key 会由中心化接口返回 403，Chat Server
+会 fail-closed。
 当前 `chris-world-cup-chat-server` DockerHost 环境已配置
 `WC2026_AGENT_API_BASE_URL=http://viki-api:8080`，但尚未注入
-`WC2026_AGENT_API_KEY`；在 key 注入前，已解锁场次调用 paid `match-context`
-会 fail-closed，不会编造或泄露内部错误。
+`WC2026_AGENT_API_KEY`。如果该内网入口允许无 key 调用，则无需额外配置；如果该入口仍要求
+`wc-api-key`，已解锁场次调用 paid `match-context` 会 fail-closed，不会编造或泄露内部错误。
 中心化接口网络错误、超时或 transport 异常会在 Agent 工具结果中统一返回
 `WC2026_AGENT_DATA_UNAVAILABLE`，不会把内部 URL、host 或异常字符串透传给模型；服务端日志只保留结构化错误类型和定位字段。
 

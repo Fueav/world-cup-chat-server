@@ -59,8 +59,9 @@ Implement the Chat Server side of the WC2026 permission boundary:
    - Keep the defensive Block D mask aligned with central contract fields, including `polymarket_implied_probability`, `probability_gap_pp`, `decimal_odds`, and `expected_value`.
 
 6. Implement central data adapter.
-   - Add settings for central base URL, API key, and timeout.
+   - Add settings for central base URL, optional API key, and timeout.
    - Accept either origin-style base URLs such as `http://viki-api:8080` or API-base URLs such as `http://viki-api:8080/api/v1`.
+   - Send `wc-api-key` only when `WC2026_AGENT_API_KEY` is configured.
    - Locked current match returns a structured locked result without calling `match-context`.
    - Unlocked current match calls only `/agent/match-context/{current_match_id}`.
    - Add central methodology fetch for public method questions.

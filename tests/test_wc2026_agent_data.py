@@ -269,3 +269,42 @@ async def test_central_client_accepts_origin_or_api_v1_base_url(monkeypatch):
         "http://viki-api:8080/api/v1/wc2026/agent/match-context/75",
         "http://viki-api:8080/api/v1/wc2026/agent/match-context/75",
     ]
+
+
+async def test_central_client_omits_api_key_header_when_unset(monkeypatch):
+    from app.runtime import wc2026_agent_data
+    from app.runtime.wc2026_agent_data import Wc2026CentralDataClient
+
+    captured_headers: list[dict] = []
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"code": 200, "data": {"schema_version": "2026-06-29"}}
+
+    class _Client:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, *, params, headers):
+            captured_headers.append(dict(headers))
+            assert url == "http://viki-api:8080/api/v1/wc2026/agent/methodology"
+            assert params == {"locale": "zh-Hans"}
+            return _Response()
+
+    monkeypatch.setattr(wc2026_agent_data.httpx, "AsyncClient", _Client)
+
+    await Wc2026CentralDataClient(
+        base_url="http://viki-api:8080",
+        api_key="",
+    ).fetch_methodology()
+
+    assert captured_headers == [{}]

@@ -9,7 +9,7 @@ Spec: `SPEC-DOCKERHOST-RELEASE-RUNBOOK-001`
 - 不要打印、粘贴、提交、复制或写入审计记录:
   - `ENVCTL_TOKEN`
   - provider key,例如 `ZAI_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
-  - WC2026 center-service key,例如 `WC2026_AGENT_API_KEY`
+  - optional WC2026 center-service key,例如 `WC2026_AGENT_API_KEY`
   - bearer token、private key、secret file 内容
 - 不要在 shell 中开启 `set -x` 后执行 secret 注入命令。
 - 不要使用会把明文值留在 shell history 或平台日志里的 `--secret KEY=VALUE`。
@@ -86,7 +86,6 @@ dry-run deploy plan:
   --git-ref "$GIT_REF" \
   --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY \
   --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file> \
   --audit-json /tmp/dockerhost-release-plan.json
 ```
@@ -101,10 +100,12 @@ dry-run deploy plan:
   --base-url "$BASE_URL" \
   --secret-env ZAI_API_KEY \
   --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY \
   --execute \
   --audit-json /tmp/dockerhost-release-audit.json
 ```
+
+如果目标中心化 WC2026 环境要求 `wc-api-key`,在上述命令中额外加入
+`--secret-env WC2026_AGENT_API_KEY`。不要求 key 的内网入口可以不传。
 
 其他 action:
 
@@ -164,8 +165,7 @@ envctl up \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+  --secret-env GEMINI_API_KEY
 ```
 
 当平台或操作习惯要求文件注入时,使用 `--secret-file KEY=PATH` 指向仓库外的私有文件。路径可以进入命令记录,文件内容不可以。
@@ -180,7 +180,7 @@ envctl up \
   --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file>
 ```
 
-如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。WC2026 Agent 数据接口还需要普通环境变量 `WC2026_AGENT_API_BASE_URL` 和可选 `WC2026_AGENT_API_TIMEOUT_S`;密钥只通过 `WC2026_AGENT_API_KEY` secret 注入。
+如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。WC2026 Agent 数据接口还需要普通环境变量 `WC2026_AGENT_API_BASE_URL` 和可选 `WC2026_AGENT_API_TIMEOUT_S`;如果目标中心化环境要求 `wc-api-key`,密钥只通过 `WC2026_AGENT_API_KEY` secret 注入。
 
 ## 5. Git Ref Deploy
 
@@ -193,8 +193,7 @@ envctl up \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+  --secret-env GEMINI_API_KEY
 
 envctl status --name "$ENV_NAME"
 ```
@@ -383,8 +382,7 @@ envctl up \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+  --secret-env GEMINI_API_KEY
 ```
 
 redeploy 后重复:
@@ -414,8 +412,7 @@ envctl up \
   --git-ref "$PREVIOUS_SHA" \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+  --secret-env GEMINI_API_KEY
 
 envctl status --name "$ENV_NAME"
 ```

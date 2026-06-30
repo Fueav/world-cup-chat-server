@@ -58,9 +58,11 @@ envctl up \
   --git-ref <branch-or-sha> \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+  --secret-env GEMINI_API_KEY
 ```
+
+如果目标中心化 WC2026 环境要求 `wc-api-key`,再额外传
+`--secret-env WC2026_AGENT_API_KEY`；允许无 key 的内网入口不需要该 secret。
 
 For correctness-first smoke fallback:
 

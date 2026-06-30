@@ -28,18 +28,18 @@ class Wc2026CentralDataClient:
         self,
         *,
         base_url: str,
-        api_key: str,
+        api_key: str | None = None,
         timeout_s: float = 3.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._api_key = api_key
+        self._api_key = (api_key or "").strip()
         self._timeout_s = timeout_s
 
     async def fetch_match_context(
         self, match_id: str, *, locale: str = "zh-Hans"
     ) -> dict[str, Any]:
         """Fetch full current-match context from the central service."""
-        if not self._base_url or not self._api_key:
+        if not self._base_url:
             raise RuntimeError("WC2026_AGENT_API_NOT_CONFIGURED")
         path_match_id = quote(str(match_id), safe="")
         url = self._url(f"/wc2026/agent/match-context/{path_match_id}")
@@ -47,7 +47,7 @@ class Wc2026CentralDataClient:
 
     async def fetch_methodology(self, *, locale: str = "zh-Hans") -> dict[str, Any]:
         """Fetch public model methodology from the central service."""
-        if not self._base_url or not self._api_key:
+        if not self._base_url:
             raise RuntimeError("WC2026_AGENT_API_NOT_CONFIGURED")
         return await self._get(self._url("/wc2026/agent/methodology"), locale=locale)
 
@@ -58,11 +58,14 @@ class Wc2026CentralDataClient:
         return f"{self._base_url}/api/v1{api_path}"
 
     async def _get(self, url: str, *, locale: str) -> dict[str, Any]:
+        headers = {}
+        if self._api_key:
+            headers["wc-api-key"] = self._api_key
         async with httpx.AsyncClient(timeout=self._timeout_s) as client:
             response = await client.get(
                 url,
                 params={"locale": locale},
-                headers={"wc-api-key": self._api_key},
+                headers=headers,
             )
             response.raise_for_status()
             data = response.json()
