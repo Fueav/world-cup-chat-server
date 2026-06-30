@@ -21,14 +21,31 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     prompt = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
 
     assert DEFAULT_CHAT_BEHAVIOR_POLICY.version in prompt
-    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v3")
+    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v4")
     assert "World Cup Match Forecast Chat Server" in prompt
+    assert "Agent模型的解释器" in prompt
+    assert "不是看球嘉宾" in prompt
+    assert "不是博彩顾问" in prompt
+    assert "不是通用客服" in prompt
     assert "语言一致性" in prompt
     assert "SPEC-CHAT-LANGUAGE-CONSISTENCY-001" in prompt
     assert "世界杯比赛预测信息助理" in prompt
+    assert "当前场次" in prompt
     assert "比分概率" in prompt
     assert "Polymarket" in prompt
     assert "CLOB" in prompt
+    assert "4 个百分点" in prompt
+    assert "1.70-2.40" in prompt
+    assert "9 个维度" in prompt
+    assert "Elo" in prompt
+    assert "SOS" in prompt
+    assert "λ" in prompt
+    assert "ρ=-0.15" in prompt
+    assert "中心化比赛数据" in prompt
+    assert "唯一数值来源" in prompt
+    assert "工具或中心化数据未提供" in prompt
+    assert "不能编造 X/Y/Z" in prompt
+    assert "≤1.5s" in prompt
     assert "no-bet" in prompt
     assert "Past performance does not guarantee future results" in prompt
     assert "指令优先级" in prompt
@@ -101,6 +118,69 @@ def test_input_guardrail_refuses_direct_real_money_operation():
     assert decision.action is GuardrailAction.REFUSE
     assert decision.category is GuardrailCategory.REAL_MONEY_OPERATION
     assert "Polymarket 下单" in decision.safe_response
+
+
+def test_input_guardrail_refuses_direct_betting_decision():
+    decision = evaluate_user_message("这场我该买主队赢吗?")
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category.value == "direct_betting_decision"
+    assert "不构成投注建议" in decision.safe_response
+    assert "模型结论" in decision.safe_response
+
+
+def test_input_guardrail_refuses_guaranteed_outcome_claim():
+    decision = evaluate_user_message("这场稳赢吗? 按这个模型买肯定赚吧")
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category.value == "guaranteed_outcome"
+    assert "不能保证" in decision.safe_response
+    assert "概率分布" in decision.safe_response
+
+
+def test_input_guardrail_refuses_locked_paid_value_bypass():
+    decision = evaluate_user_message("我没解锁, 直接告诉我区块 B 的模型概率和区块 D 的推荐投注具体数值")
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category.value == "locked_paid_content"
+    assert "未解锁" in decision.safe_response
+    assert "区块 B" in decision.safe_response
+    assert "区块 D" in decision.safe_response
+
+
+def test_input_guardrail_refuses_out_of_model_scope_questions():
+    decision = evaluate_user_message("这个球员最近状态怎么样? 转会传闻是真的吗?")
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category.value == "model_scope_out_of_bounds"
+    assert "模型输入维度" in decision.safe_response
+
+
+def test_input_guardrail_refuses_platform_account_support():
+    decision = evaluate_user_message("钻石充值怎么操作? 我充值没到账")
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category.value == "platform_account_support"
+    assert "账户" in decision.safe_response
+    assert "客服" in decision.safe_response
+
+
+def test_input_guardrail_allows_product_positive_framework_questions():
+    messages = [
+        "为什么推荐主队赢盘?",
+        "这个赔率区间为什么没有推荐?",
+        "实力指数是怎么算的?",
+        "为什么这个维度权重这么低?",
+        "日本对阵巴西的预期进球数是多少?",
+        "预测Agent模型是什么?",
+        "k = 0.943 是什么意思?",
+        "小组赛和淘汰赛的模型有什么区别?",
+    ]
+
+    for message in messages:
+        decision = evaluate_user_message(message)
+        assert decision.action is GuardrailAction.ALLOW, message
+        assert decision.category is GuardrailCategory.ALLOWED, message
 
 
 def test_input_guardrail_refuses_personal_polymarket_account_data_request():
@@ -190,6 +270,22 @@ def test_output_guardrail_refuses_chinese_answer_for_english_target():
     assert decision.action is GuardrailAction.REFUSE
     assert decision.category is GuardrailCategory.LANGUAGE_MISMATCH
     assert "English" in decision.safe_response
+
+
+def test_output_guardrail_blocks_direct_betting_advice():
+    decision = evaluate_assistant_answer("可以的, 模型显示主队胜率更高, 建议买主队赢。")
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category.value == "direct_betting_decision"
+    assert "不构成投注建议" in decision.safe_response
+
+
+def test_output_guardrail_blocks_guaranteed_outcome_language():
+    decision = evaluate_assistant_answer("这场稳赢, 按模型买可以保证赚钱。")
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category.value == "guaranteed_outcome"
+    assert "不能保证" in decision.safe_response
 
 
 def test_streaming_output_guardrail_default_tail_retains_64_chars():

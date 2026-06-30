@@ -143,9 +143,16 @@ def coverage_summary(cases: list[ChatBehaviorCase]) -> dict[str, int]:
         "secret_request": 0,
         "real_money_operation": 0,
         "personal_wallet_data": 0,
+        "direct_betting_decision": 0,
+        "guaranteed_outcome": 0,
+        "locked_paid_content": 0,
+        "model_scope_out_of_bounds": 0,
+        "platform_account_support": 0,
         "output_policy_leak": 0,
         "language_mismatch": 0,
         "false_positive_guard": 0,
+        "product_doc_section_2": 0,
+        "central_data_pending": 0,
     }
     for case in cases:
         action = case.expected_input_action
@@ -162,6 +169,10 @@ def coverage_summary(cases: list[ChatBehaviorCase]) -> dict[str, int]:
             counts["language_mismatch"] += 1
         if "false_positive_guard" in case.raw.get("tags", []):
             counts["false_positive_guard"] += 1
+        if "product_doc_section_2" in case.raw.get("tags", []):
+            counts["product_doc_section_2"] += 1
+        if "central_data_pending" in case.raw.get("tags", []):
+            counts["central_data_pending"] += 1
     return counts
 
 

@@ -15,6 +15,7 @@ Every workflow class in `docs/harness-workflows.json` must declare:
 
 - `source_ids`: official sources that justify the workflow.
 - `principle_ids`: adopted principles from the source analysis.
+- `agent_team`: whether an Agent Team is recommended, optional, or usually avoided, with use cases, avoid cases, coordination shape, and evidence expectations.
 
 The validator checks those IDs so this project does not drift into undocumented agent folklore.
 
@@ -44,10 +45,45 @@ The validator checks those IDs so this project does not drift into undocumented 
 | `eval-improvement-loop` | Convert repeated failures into evals, tests, scripts, hooks, or skill improvements. |
 | `mechanical-invariants` | Encode repeated correctness rules in scripts, linters, tests, or CI gates. |
 | `sandbox-boundary` | Keep autonomy inside explicit filesystem, network, command, approval, and credential boundaries. |
+| `permission-classifier` | Classify actions by risk before deciding whether they can run automatically, require approval, or are forbidden. |
+| `credential-vaulting` | Keep secrets outside prompts, docs, logs, and artifacts; pass only scoped references to runtime commands. |
+| `session-interface` | Separate reasoning, execution, transport, state persistence, replay, and operator controls in long-running or remote sessions. |
+| `agent-native-telemetry` | Emit agent-legible events, state transitions, risk signals, and pause or kill evidence. |
+| `tool-context-economy` | Design tools and MCP surfaces to return compact, task-shaped context instead of noisy raw state. |
+| `eval-noise-calibration` | Separate model behavior from flaky infrastructure, evaluator bias, and harness noise before changing gates. |
 | `hook-gate` | Use lifecycle hooks or equivalent mechanical checks for repeated safety or quality gates. |
 | `context-reset` | Use fresh sessions, compaction checkpoints, or handoff notes to avoid stale context. |
 | `skill-packaging` | Turn repeated workflows into focused skills with triggers, references, scripts, and tests. |
 | `human-escalation` | Route product, safety, credential, or irreversible decisions to a human instead of hiding assumptions. |
+
+## Agent Team Suitability
+
+Agent Teams are recommended when they create independent work or independent judgment. They are not required for every workflow, and forcing them onto tight sequential work usually adds coordination cost without improving correctness.
+
+Each workflow class declares one suitability level:
+
+| Suitability | Meaning |
+| --- | --- |
+| `recommended` | Prefer an Agent Team when local resources and task boundaries allow it. Keep one synthesis owner. |
+| `optional` | Consider an Agent Team only after the task splits into independent slices, reviewers, or hypotheses. |
+| `avoid` | Stay single-agent unless the task grows beyond the focused-change assumptions. |
+
+Use Agent Teams for:
+
+- independent implementation slices or package-level refactors
+- breadth-first research across unrelated source families
+- separate claim extraction, source review, and adversarial verification
+- candidate generation plus rubric-based judging
+- long-running task graph nodes with clear owners and stop conditions
+
+Avoid Agent Teams when:
+
+- the change fits in one context window with obvious verification
+- the work is strongly sequential or depends on one evolving product decision
+- sensitive credentials, live incident chronology, or fragile local runtime state should stay under one operator
+- the coordination overhead is larger than the expected quality gain
+
+The lead agent remains responsible for synthesis, final review, release evidence, and explaining why an Agent Team was used or skipped when the workflow was not a focused change.
 
 ## Workflow Classes
 
@@ -74,6 +110,10 @@ Use for broad source-backed research. Fan out evidence collection, verify source
 ### HARNESS-SECURITY-REVIEW
 
 Use for security review, threat modeling, exploit validation, or fix review. Separate discovery, exploitability analysis, validation, and remediation review. Quarantine untrusted inputs and escalate suspected production secrets or active exploits.
+
+### HARNESS-AUTONOMY-GOVERNANCE
+
+Use when changing Coding Agent permissions, automatic action modes, sandbox policy, remote or managed execution, credential boundaries, prompt-injection exposure, telemetry, or operator pause/kill controls. Classify actions by risk, prove the sandbox and credential scope, and require independent review before increasing unattended autonomy.
 
 ### HARNESS-INCIDENT-TRIAGE
 
@@ -107,12 +147,15 @@ Start with `HARNESS-FOCUSED-CHANGE`. Escalate only when the task has one of thes
 - The task is long enough that one context may hide partial completion.
 - The result needs independent verification.
 - The input includes untrusted public or production content.
+- The task increases agent autonomy, changes permission or sandbox boundaries, or introduces remote/managed execution.
 - The amount of work is unknown and needs a loop with a stop condition.
 - The answer depends on qualitative ranking or competing alternatives.
 - Model cost or intelligence should be routed by complexity.
 - The runtime, UI, logs, metrics, traces, or local environment must become easier for agents to inspect.
 - Repeated agent failures should become evals, scripts, hooks, or skills.
 - The work needs a durable task graph, compaction checkpoint, or handoff ledger.
+
+After choosing the workflow class, read its `agent_team` block. Use that block to decide whether to stay single-agent, add a reviewer, split into parallel slice agents, or run candidate/judge agents. The decision should follow the task shape and available verification, not a blanket rule.
 
 ## Evidence Contract
 
@@ -142,6 +185,7 @@ Every non-template markdown specification under `docs/specifications/` and every
 - Workflow scripts and AI-tool wrappers must not become the only enforcement point.
 - A workflow that consumes untrusted content must not directly perform privileged writes.
 - A workflow that uses extra parallelism must declare budget and stop conditions first.
+- A workflow should not spawn an Agent Team unless the `agent_team` suitability and current task shape justify the coordination cost.
 - Source traceability supports but does not replace current-state verification.
 - Cache-safe context practices must never override sandbox, approval, credential, or release-gate boundaries.
 - Rich artifacts are review aids; they are not a substitute for spec, tests, and release evidence.

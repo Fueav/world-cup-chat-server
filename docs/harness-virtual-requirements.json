@@ -5,84 +5,142 @@
       "id": "virtual-small-doc-fix",
       "request": "Fix a typo in README and run the normal release gate.",
       "expected_workflow": "HARNESS-FOCUSED-CHANGE",
-      "required_patterns": ["token-budget", "resumable-evidence"],
-      "rationale": "Small edits should stay linear, keep budget bounded, and preserve release evidence without unnecessary workflow fan-out."
+      "required_patterns": [
+        "token-budget",
+        "resumable-evidence"
+      ],
+      "rationale": "Small edits should stay linear, keep budget bounded, and preserve release evidence."
     },
     {
       "id": "virtual-api-behavior",
       "request": "Add a new run status field to the API response and persistence model.",
       "expected_workflow": "HARNESS-SPEC-FIRST-FEATURE",
-      "required_patterns": ["classifier-routing", "adversarial-verification", "source-traceability"],
-      "rationale": "Runtime and API behavior must be classified as spec-first, trace the workflow decision, and receive independent verification."
+      "required_patterns": [
+        "classifier-routing",
+        "adversarial-verification",
+        "source-traceability"
+      ],
+      "rationale": "Runtime and API behavior must be classified as spec-first, source-traceable, and independently verified."
     },
     {
       "id": "virtual-user-to-account-refactor",
       "request": "Rename the User domain model to Account across routes, tasks, tests, docs, and event payloads.",
       "expected_workflow": "HARNESS-WIDE-REFACTOR",
-      "required_patterns": ["fanout-barrier-synthesis", "worktree-isolation", "mechanical-invariants"],
+      "required_patterns": [
+        "fanout-barrier-synthesis",
+        "worktree-isolation",
+        "mechanical-invariants"
+      ],
       "rationale": "A broad rename needs slice isolation, synthesis, and mechanical invariant checks across call sites."
     },
     {
       "id": "virtual-claim-verification",
       "request": "Verify every factual claim in a release note against code, tests, and logs before publishing.",
       "expected_workflow": "HARNESS-DEEP-VERIFICATION",
-      "required_patterns": ["adversarial-verification", "source-traceability", "trajectory-review"],
-      "rationale": "Claim checking must preserve sources, independently verify support, and inspect how the claims were produced."
+      "required_patterns": [
+        "adversarial-verification",
+        "source-traceability",
+        "trajectory-review"
+      ],
+      "rationale": "Claim checking must preserve sources, independently verify support, and inspect how claims were produced."
     },
     {
       "id": "virtual-source-backed-research",
       "request": "Research why provider latency increased by combining code paths, logs, metrics, and vendor notes.",
       "expected_workflow": "HARNESS-RESEARCH-SYNTHESIS",
-      "required_patterns": ["fanout-barrier-synthesis", "source-traceability", "artifact-review"],
+      "required_patterns": [
+        "fanout-barrier-synthesis",
+        "source-traceability",
+        "artifact-review"
+      ],
       "rationale": "Research should fan out by source family, keep evidence traceable, and return a reviewable synthesis artifact."
     },
     {
       "id": "virtual-security-review",
       "request": "Review a proposed auth middleware change and validate whether it can be bypassed.",
       "expected_workflow": "HARNESS-SECURITY-REVIEW",
-      "required_patterns": ["quarantine", "adversarial-verification", "sandbox-boundary"],
+      "required_patterns": [
+        "quarantine",
+        "adversarial-verification",
+        "sandbox-boundary"
+      ],
       "rationale": "Security work needs isolated untrusted input handling, independent exploitability review, and explicit sandbox boundaries."
+    },
+    {
+      "id": "virtual-autonomy-governance",
+      "request": "Increase an agent runner from approve-each-write to automatic writes with scoped credentials and an operator pause path.",
+      "expected_workflow": "HARNESS-AUTONOMY-GOVERNANCE",
+      "required_patterns": [
+        "permission-classifier",
+        "credential-vaulting",
+        "session-interface"
+      ],
+      "rationale": "Higher autonomy needs permission classification, credential boundaries, session controls, telemetry, and independent review."
     },
     {
       "id": "virtual-recurring-incidents",
       "request": "Mine the last six months of incidents, dedupe them, and identify recurring root causes with owners.",
       "expected_workflow": "HARNESS-INCIDENT-TRIAGE",
-      "required_patterns": ["classifier-routing", "loop-until-done", "quarantine"],
+      "required_patterns": [
+        "classifier-routing",
+        "loop-until-done",
+        "quarantine"
+      ],
       "rationale": "Incident triage reads untrusted evidence, dedupes at scale, and loops only against explicit stop conditions."
     },
     {
       "id": "virtual-cli-name-selection",
       "request": "Generate many names for a CLI tool and choose the top three through rubric-based comparison.",
       "expected_workflow": "HARNESS-EXPLORATION-TOURNAMENT",
-      "required_patterns": ["tournament-selection", "generate-filter", "artifact-review"],
+      "required_patterns": [
+        "tournament-selection",
+        "generate-filter",
+        "artifact-review"
+      ],
       "rationale": "Taste-based selection is better handled by alternatives, rubric filtering, and a reviewable selection artifact."
     },
     {
       "id": "virtual-multi-session-platform-upgrade",
       "request": "Coordinate a platform upgrade across several sessions where subtasks have blockers and dependencies.",
       "expected_workflow": "HARNESS-LONG-RUN-TASK-GRAPH",
-      "required_patterns": ["task-graph", "loop-until-done", "resumable-evidence"],
+      "required_patterns": [
+        "task-graph",
+        "loop-until-done",
+        "resumable-evidence"
+      ],
       "rationale": "Long-running work needs durable task metadata, dependencies, blockers, and resumable evidence."
     },
     {
       "id": "virtual-runtime-legibility",
       "request": "Make local startup and smoke validation easier for future agents by improving logs, run commands, and runtime inspection output.",
       "expected_workflow": "HARNESS-RUNTIME-LEGIBILITY",
-      "required_patterns": ["agent-legibility", "runtime-feedback", "mechanical-invariants"],
+      "required_patterns": [
+        "agent-legibility",
+        "runtime-feedback",
+        "tool-context-economy"
+      ],
       "rationale": "Runtime legibility work must prove that an agent can start, inspect, and validate the running system."
     },
     {
       "id": "virtual-regression-gate-improvement",
       "request": "Turn repeated review misses into deterministic checks that fail when the mistake returns.",
       "expected_workflow": "HARNESS-EVAL-IMPROVEMENT-LOOP",
-      "required_patterns": ["eval-improvement-loop", "trajectory-review", "mechanical-invariants"],
+      "required_patterns": [
+        "eval-improvement-loop",
+        "trajectory-review",
+        "eval-noise-calibration"
+      ],
       "rationale": "Repeated failures should become reviewed examples plus durable tests, hooks, scripts, or evals."
     },
     {
       "id": "virtual-recurring-review-comments",
       "request": "Mine repeated review corrections and turn the survivors into a reusable repo skill with gotchas and scripts.",
       "expected_workflow": "HARNESS-SKILL-EVOLUTION",
-      "required_patterns": ["skill-packaging", "progressive-disclosure", "hook-gate"],
+      "required_patterns": [
+        "skill-packaging",
+        "progressive-disclosure",
+        "tool-context-economy"
+      ],
       "rationale": "Skill evolution should package repeated workflows into focused triggerable guidance with mechanical gates where useful."
     }
   ]

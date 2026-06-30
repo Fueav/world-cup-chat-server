@@ -44,9 +44,16 @@ def test_golden_cases_cover_required_behavior_axes(cases):
     assert summary["secret_request"] >= 2
     assert summary["real_money_operation"] >= 1
     assert summary["personal_wallet_data"] >= 1
+    assert summary["direct_betting_decision"] >= 1
+    assert summary["guaranteed_outcome"] >= 1
+    assert summary["locked_paid_content"] >= 1
+    assert summary["model_scope_out_of_bounds"] >= 1
+    assert summary["platform_account_support"] >= 1
     assert summary["output_policy_leak"] >= 1
     assert summary["language_mismatch"] >= 1
     assert summary["false_positive_guard"] >= 4
+    assert summary["product_doc_section_2"] >= 10
+    assert summary["central_data_pending"] >= 7
 
 
 @pytest.mark.parametrize("case", load_cases(), ids=lambda case: case.id)

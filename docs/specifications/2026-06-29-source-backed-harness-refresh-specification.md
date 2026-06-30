@@ -5,88 +5,54 @@
 
 ## Context
 
-- PRD/source request: inspect the latest Harness update in `moss-site/ai-first-go-template`, specifically commit `19f276003a78ca975194cc2d58dfeb7d32d67458`, and port the missing source-backed Harness pieces into this project.
-- Current behavior: this project had an older Harness workflow manifest and regression validator that used `source_reading_set`, `principles`, legacy strategy fields, and older pattern names.
-- Problem: without the refresh, this repository can drift from the latest source-backed Harness contract and keep accepting obsolete workflow classes or pattern vocabulary.
-- Non-goals: no Go template project structure, no Go runtime changes, no chat API/runtime/database behavior change, and no DockerHost deployment change.
+- PRD/source request: inspect the local latest Harness template in `/Users/chris/AiProject/ai-first-go-template` and port missing architecture into this project.
+- Current behavior: this project has an older source-backed Harness manifest and validator, but it is missing the latest source set, Agent Team suitability contract, autonomy-governance workflow, and newer session/tool/eval-noise patterns.
+- Problem: without this refresh, the repository can accept stale workflow definitions and miss governance evidence for higher-autonomy or managed-agent changes.
+- Non-goals: no Go template project structure, no runtime/API/database behavior change, and no DockerHost deployment change.
 
 ## Product Semantics
 
-- User/operator workflow:
-  - Maintainers choose a Harness workflow class for non-template specs and implementation plans.
-  - The validator rejects undocumented source IDs, principle IDs, unknown patterns, missing evidence contracts, and stale workflow bindings.
-- State model:
-  - Harness state remains repository documents plus generated `.artifacts/release/harness_workflows.json`.
-- Ownership and identity rules:
-  - This project keeps its `docs/specifications/` and `docs/implementation-plans/` binding model instead of adopting the template's `specs/` directory shape.
-- Compatibility and migration expectations:
-  - Existing World Cup runtime behavior is unaffected.
-  - Existing release verification continues to call `scripts/check_harness_workflows.sh`.
+- Maintainers choose a Harness workflow class for non-template specifications and implementation plans.
+- The validator rejects undocumented source IDs, principle IDs, unknown patterns, missing Agent Team suitability, missing evidence contracts, stale virtual routing cases, and stale workflow bindings.
+- Harness state remains repository documents plus generated `.artifacts/release/harness_workflows.json`.
+- This project keeps its `docs/specifications/` and `docs/implementation-plans/` binding model instead of adopting the template's Go `specs/` directory shape.
 
 ## API / Interface Contract
 
 - Public API behavior: no runtime API change.
-- Script contract:
-  - `scripts/check_harness_workflows.sh` must validate the refreshed manifest schema.
-  - `scripts/check_harness_workflows_test.sh` must exercise both valid and invalid manifest cases for the refreshed schema.
-- Manifest contract:
-  - Top-level `source_set` and `adopted_principles` are required.
-  - Each workflow class must include valid `source_ids` and `principle_ids`.
-  - Workflow patterns must come from the refreshed source-backed vocabulary.
-
-## Data / Schema / Projection Impact
-
-- Tables, migrations, and runtime caches: none.
-- Release artifacts:
-  - The Harness validator writes `.artifacts/release/harness_workflows.json` with source, principle, workflow, spec, plan, and virtual requirement summaries.
+- `scripts/check_harness_workflows.sh` validates the refreshed manifest schema and project spec/plan bindings.
+- `scripts/check_harness_workflows_test.sh` exercises valid and invalid manifest cases for source sets, Agent Team suitability, unknown patterns, virtual requirements, and missing bindings.
 
 ## Architecture
 
-- Modules/files expected to change:
-  - `docs/harness-workflows.json`: refreshed source-backed workflow manifest.
-  - `docs/harness-workflows.md`: project-adapted workflow catalog and binding rule.
-  - `docs/harness-source-analysis.md`: source and principle matrix.
-  - `docs/harness-virtual-requirements.json`: refreshed virtual routing regression cases.
-  - `scripts/check_harness_workflows.sh`: refreshed schema validator.
-  - `scripts/check_harness_workflows_test.sh`: validator regression tests.
-- Transaction/concurrency boundaries: none.
-- Observability/logging/metrics:
-  - Release evidence remains under `.artifacts/release/`.
-- Rollback strategy:
-  - Revert the Harness docs/scripts as a single patch if the refreshed contract blocks valid workflows.
+- `docs/harness-workflows.json`: refreshed source-backed workflow manifest.
+- `docs/harness-workflows.md`: project-adapted workflow catalog and binding rule.
+- `docs/harness-source-analysis.md`: source and principle matrix.
+- `docs/harness-virtual-requirements.json`: virtual routing regression cases.
+- `docs/specifications/harness_workflows/`: Harness self-spec fragments.
+- `scripts/check_harness_workflows.sh`: refreshed validator.
+- `scripts/check_harness_workflows_test.sh`: validator regression tests.
 
 ## Harness Classification
 
-- Expected gate(s):
-  - `HARNESS-SPEC-FIRST-FEATURE` because this changes repository workflow behavior and release validation.
-- Whether harness mapping must be extended:
-  - Yes. The refreshed manifest replaces the obsolete `HARNESS-INTERACTIVE-ARTIFACT` class with `HARNESS-RUNTIME-LEGIBILITY` and `HARNESS-EVAL-IMPROVEMENT-LOOP`.
+- Expected gate: `HARNESS-SPEC-FIRST-FEATURE` because this changes repository workflow behavior and release validation.
+- Harness mapping extension: add `HARNESS-AUTONOMY-GOVERNANCE`, Agent Team suitability on every workflow class, and source-backed patterns for permission classification, credential vaulting, session interfaces, agent-native telemetry, tool context economy, and eval-noise calibration.
 - Focused verification commands:
   - `scripts/check_harness_workflows_test.sh`
   - `scripts/check_harness_workflows.sh`
   - `scripts/check_spec_contract.sh`
-- Prerelease-grade verification commands:
-  - `make test`
+- Prerelease-grade verification command:
   - `AI_BOUNDARY_APPROVED=1 make verify-release`
 
 ## Acceptance Criteria
 
-- Functional:
-  - Harness manifest validates with source IDs and principle IDs.
-  - Harness docs describe the refreshed workflow classes and project-specific spec/plan binding rule.
-  - Virtual requirements no longer reference removed classes, patterns, or strategy fields.
-  - Validator regression tests cover missing source sets, unknown sources, unknown principles, stale docs references, virtual requirement drift, and missing spec/plan bindings.
-- Compatibility:
-  - Current project specs and plans continue to validate through `scripts/check_spec_contract.sh`.
-  - Existing release gate continues to call the Harness validator.
-- Operational:
-  - Release verification produces the standard summary artifact.
+- Harness manifest validates with current source IDs, principle IDs, Agent Team suitability, and refreshed workflow classes.
+- Harness docs describe the refreshed classes and the project-specific spec/plan binding rule.
+- Virtual requirements cover autonomy governance and use only declared workflow classes and patterns.
+- Validator self-tests cover missing source sets, missing Agent Team data, invalid Agent Team suitability, unknown patterns, missing virtual requirements, and missing spec/plan bindings.
+- Current project specs and plans continue to validate through `scripts/check_spec_contract.sh`.
 
 ## Review Notes
 
-- Accepted assumptions:
-  - The latest template commit inspected is `19f276003a78ca975194cc2d58dfeb7d32d67458`.
-  - This project should keep its existing docs directory layout.
-- Rejected alternatives:
-  - Do not copy the template's Go-specific `specs/` layout.
-  - Do not weaken release validation to pass stale workflow records.
+- Accepted assumption: the local template at `/Users/chris/AiProject/ai-first-go-template` is the latest source of truth for this sync.
+- Rejected alternative: do not copy the template's Go-specific directory layout or weaken release validation to pass stale workflow records.
