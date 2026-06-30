@@ -61,12 +61,12 @@
    - Rollback or compatibility note: revert this step if provider behavior changes and the truncation heuristic causes unacceptable false positives.
 
 7. Concise answer style hardening before live re-evaluation
-   - Files/modules: `app/runtime/chat_behavior.py`, `tests/test_chat_behavior_policy.py`, `tests/live_eval/`.
-   - Behavior change: instruct the model to answer conclusion-first with 3-5 short bullets by default, avoid Markdown tables unless explicitly requested, and make live eval score answer length/table usage as deterministic style checks.
-   - Data contract impact: none.
-   - Tests to add/update: prompt assertion and live-eval scorer style checks.
-   - Verification command: `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/live_eval/test_wc2026_effect_cases.py -q`.
-   - Rollback or compatibility note: if a future product flow requires long explanations, add explicit per-case `max_answer_chars` or an opt-in detailed-answer mode rather than weakening the default side-panel style.
+   - Files/modules: `app/runtime/chat_behavior.py`, `app/runtime/orchestrator.py`, `app/runtime/wc2026_agent_data.py`, `dockerhost/compose.yaml`, `scripts/check_dockerhost_production_config.py`, `tests/test_chat_behavior_policy.py`, `tests/test_wc2026_agent_data.py`, `tests/live_eval/`.
+   - Behavior change: instruct the model to answer conclusion-first with 3-5 short bullets by default, avoid Markdown tables unless explicitly requested, filter default Markdown tables/horizontal rules before streaming, clamp default verbose generated output while preserving raw-output truncation detection, expose missing central-data base URL as client-unavailable instead of a synthetic transport failure, and keep DockerHost API/worker provider defaults aligned.
+   - Data contract impact: no external schema change; unconfigured central-data service still fails closed with a sanitized `central_unavailable` tool result.
+   - Tests to add/update: prompt assertion, streaming style guardrail tests, live-eval scorer style checks, central-data unconfigured-service test, and DockerHost production-config check.
+   - Verification command: `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_wc2026_agent_data.py tests/test_production_readiness.py tests/live_eval/test_wc2026_effect_cases.py tests/test_agent_factory.py tests/test_orchestrator.py -q`.
+   - Rollback or compatibility note: if a future product flow requires long explanations, add explicit per-case `max_answer_chars` or an opt-in detailed-answer mode rather than weakening the default side-panel style; central-data fail-closed behavior must not be relaxed to fabricate match-specific values.
 
 ## Risk Controls
 
@@ -74,8 +74,8 @@
 - Money/accounting/security risks: direct betting decisions and guaranteed-profit claims are tightened, not loosened; no execution workflow is added.
 - Migration/rebuild risks: none.
 - Performance risks: only local string checks added to guardrail path.
-- Deployment/test-branch risks: no deployment requested in this slice.
-- Unrelated local changes to avoid: do not touch central-data interfaces, DB migrations, DockerHost deployment scripts, or unrelated docs.
+- Deployment/test-branch risks: live evaluation uses a disposable DockerHost environment and must record the tested commit and target URL.
+- Unrelated local changes to avoid: do not touch DB migrations, DockerHost deployment scripts, or unrelated docs.
 
 ## Completion Criteria
 

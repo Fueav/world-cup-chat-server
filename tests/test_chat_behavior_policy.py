@@ -406,3 +406,46 @@ def test_streaming_output_guardrail_allows_chinese_with_worldcup_terms():
     assert "这场世界杯比赛" in safe_text
     assert "CLOB" in safe_text
     assert guardrail.blocked is False
+
+
+def test_streaming_output_guardrail_removes_markdown_table_lines():
+    guardrail = StreamingOutputGuardrail(tail_chars=0)
+    outputs = []
+
+    for part in (
+        "结论:当前只能解释公开规则。\n\n",
+        "| 判定 | 条件 |\n|---|---|\n| value_bet | 4pp 且 1.70-2.40 |\n",
+        "风险提示:概率不是保证。\n",
+    ):
+        chunk = guardrail.push(part)
+        if chunk:
+            outputs.append(chunk)
+    tail = guardrail.finish()
+    if tail:
+        outputs.append(tail)
+
+    safe_text = "".join(outputs)
+    assert "| 判定 | 条件 |" not in safe_text
+    assert "|---|---|" not in safe_text
+    assert "结论:当前只能解释公开规则" in safe_text
+    assert "风险提示:概率不是保证" in safe_text
+
+
+def test_streaming_output_guardrail_clamps_verbose_default_answer():
+    guardrail = StreamingOutputGuardrail(tail_chars=0)
+    verbose = (
+        "EV compares model probability with market price. "
+        "It is not a guarantee and not betting advice. "
+    ) * 40
+
+    outputs = []
+    chunk = guardrail.push(verbose)
+    if chunk:
+        outputs.append(chunk)
+    tail = guardrail.finish()
+    if tail:
+        outputs.append(tail)
+
+    safe_text = "".join(outputs)
+    assert len(safe_text) <= 1000
+    assert safe_text[-1] in ".。!！?？;；:：)]}）】」』\"'`"

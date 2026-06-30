@@ -98,6 +98,21 @@ def test_current_match_tool_interface_does_not_accept_arbitrary_match_id():
     assert "requested_match_id" not in params
 
 
+async def test_build_service_without_base_url_returns_client_unavailable():
+    from app.core.config import Settings
+    from app.runtime.wc2026_agent_data import build_wc2026_agent_data_service
+
+    service = build_wc2026_agent_data_service(
+        Settings(_env_file=None, wc2026_agent_api_base_url="")
+    )
+
+    result = await service.get_current_match_context(_wc_context(unlocked=True))
+
+    assert result["ok"] is False
+    assert result["status"] == "central_unavailable"
+    assert result["message"] == "WC2026_AGENT_DATA_CLIENT_UNAVAILABLE"
+
+
 async def test_central_match_context_error_returns_structured_failure():
     from app.runtime.wc2026_agent_data import Wc2026AgentDataService
 

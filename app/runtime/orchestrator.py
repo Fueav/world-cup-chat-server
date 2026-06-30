@@ -375,6 +375,7 @@ class AgentOrchestrator:
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)
         emitted_chunks: list[str] = []
+        raw_chunks: list[str] = []
         llm_started = False
         quota_decision = await self._acquire_provider_quota(
             agent_run_id, user_message, route_type
@@ -394,6 +395,7 @@ class AgentOrchestrator:
                             emitter,
                             llm_started,
                             emitted_chunks,
+                            raw_chunks,
                             target_language,
                         )
                     elif Agent.is_call_tools_node(node):
@@ -404,13 +406,19 @@ class AgentOrchestrator:
                     emitter,
                     str(run.result.output),
                     emitted_chunks,
+                    raw_chunks,
                     target_language,
                 )
             answer = "".join(emitted_chunks)
+            raw_answer = "".join(raw_chunks)
             if not answer.strip():
                 answer = self._empty_answer(user_message)
             return await self._finalize_answer_integrity(
-                agent_run_id, answer, emitter, target_language
+                agent_run_id,
+                answer,
+                emitter,
+                target_language,
+                raw_answer=raw_answer or answer,
             )
         except ProviderRateLimitError:
             raise
@@ -429,10 +437,15 @@ class AgentOrchestrator:
                 ) from exc
             await self._emit_error(emitter, "agent", exc)
             answer = "".join(emitted_chunks)
+            raw_answer = "".join(raw_chunks)
             if not answer.strip():
                 answer = self._empty_answer(user_message)
             return await self._finalize_answer_integrity(
-                agent_run_id, answer, emitter, target_language
+                agent_run_id,
+                answer,
+                emitter,
+                target_language,
+                raw_answer=raw_answer or answer,
             )
 
     async def _finalize_answer_integrity(
@@ -441,9 +454,12 @@ class AgentOrchestrator:
         answer: str,
         emitter: _EventEmitter,
         target_language: str,
+        *,
+        raw_answer: str | None = None,
     ) -> str:
         """Apply post-generation integrity and deterministic product-safety rules."""
-        if is_likely_truncated_answer(answer):
+        integrity_answer = raw_answer if raw_answer is not None else answer
+        if is_likely_truncated_answer(integrity_answer):
             await emitter.emit(
                 EventType.ERROR,
                 {
@@ -553,6 +569,7 @@ class AgentOrchestrator:
         emitter: _EventEmitter,
         llm_started: bool,
         emitted_chunks: list[str],
+        raw_chunks: list[str],
         target_language: str,
     ) -> bool:
         """处理模型请求节点:首次发 LLM_GENERATING,最终结果阶段流式 TOKEN。"""
@@ -571,6 +588,7 @@ class AgentOrchestrator:
             if final_found:
                 async for token in request_stream.stream_text(delta=True):
                     if token:
+                        raw_chunks.append(token)
                         safe_chunk = guardrail.push(token)
                         if safe_chunk:
                             output_guardrail_reported = (
@@ -797,9 +815,11 @@ class AgentOrchestrator:
         emitter: _EventEmitter,
         output: str,
         emitted_chunks: list[str],
+        raw_chunks: list[str],
         target_language: str,
     ) -> None:
         """Fallback for completed model output that did not stream text deltas."""
+        raw_chunks.append(output)
         aggregator = TokenAggregator()
         guardrail = StreamingOutputGuardrail(target_language=target_language)
         safe_chunk = guardrail.push(output)

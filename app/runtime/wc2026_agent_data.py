@@ -192,6 +192,8 @@ class Wc2026AgentDataService:
 
 def build_wc2026_agent_data_service(settings: Settings) -> Wc2026AgentDataService:
     """Build the WC2026 current-match data service from app settings."""
+    if not settings.wc2026_agent_api_base_url.strip():
+        return Wc2026AgentDataService(client=None)
     client = Wc2026CentralDataClient(
         base_url=settings.wc2026_agent_api_base_url,
         api_key=settings.wc2026_agent_api_key,

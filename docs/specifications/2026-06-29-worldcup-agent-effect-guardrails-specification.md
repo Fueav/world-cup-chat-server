@@ -76,6 +76,7 @@
   - Existing chat validation and run semantics stay unchanged.
   - Deterministic input refusals remain successful assistant answers and bypass model/tool execution.
   - Output guardrail replacements remain safe terminal content.
+  - If WC2026 central agent-data API is not configured, current-match tools fail closed with sanitized `central_unavailable` content and must not fabricate current-match probabilities, odds, strength scores, recommendations, or paid values.
 - Compatibility and migration expectations:
   - Existing clients, routes, events, RAG admin behavior, and conversation APIs remain compatible.
   - Existing World Cup behavior cases remain valid unless narrowed by product guardrails.
@@ -118,6 +119,9 @@
 
 - Modules/files expected to change:
   - `app/runtime/chat_behavior.py`: policy version, identity, product-effect guardrails, output guardrails, and safe responses.
+  - `app/runtime/orchestrator.py`: raw model text tracking for output-integrity checks when streamed display text is compacted.
+  - `app/runtime/wc2026_agent_data.py`: central-data service construction and sanitized fail-closed behavior when no base URL is configured.
+  - `dockerhost/compose.yaml` and `scripts/check_dockerhost_production_config.py`: provider default alignment for API and worker services.
   - `tests/test_chat_behavior_policy.py`: focused policy and guardrail tests.
   - `tests/chat_eval/golden_cases.jsonl`: product examples and effect-tuning oracles.
   - `tests/chat_eval/evaluator.py` and `tests/test_chat_behavior_eval.py`: coverage counters for new guardrail categories.
@@ -127,6 +131,7 @@
   - This specification and matching implementation plan.
 - Data flow:
   - Same as existing chat behavior policy: API persists user message, orchestrator evaluates input guardrail, safe refusals short-circuit, allowed runs proceed through Pydantic AI and tools, output guardrail protects final and streamed content.
+  - The streaming output guardrail enforces default side-panel style before `TOKEN` events are emitted, while the orchestrator keeps raw model text for truncation detection so style compaction cannot mask provider cutoffs.
 - Transaction/concurrency boundaries:
   - No new transaction or lock.
 - Observability/logging/metrics:
@@ -168,11 +173,13 @@
   - Prompt includes Section 2 answer frameworks for recommendation reason, odds/no-recommendation reason, strength-index calculation, weight rationale, lineup repricing, expected-goals/win-rate values, and model-principle coefficients.
   - Prompt includes strength-index, expected-goals/probability, model-principle, and style constraints from the product document.
   - Prompt enforces concise answer style: conclusion first, 3-5 short bullets by default, and no default Markdown tables or long section scaffolding unless the user explicitly asks for detail.
+  - Streaming output removes default Markdown table/horizontal-rule scaffolding and clamps verbose default answers without weakening hidden-instruction, language, direct-betting, guaranteed-profit, or truncation guardrails.
   - Input guardrail refuses direct betting-decision prompts, guaranteed-outcome prompts, locked-content bypass prompts, model-scope-out-of-bounds prompts, and platform/account support prompts.
   - Output guardrail blocks direct buy/sell advice and guaranteed-profit/outcome language.
   - Allowed market, recommendation, EV, odds, or Polymarket explanations receive a deterministic risk footer when the model omitted one.
   - Long model answers that look cut off before a terminal sentence are treated as `TRUNCATED_OUTPUT` failures rather than successful final answers.
   - Live answer-effect evaluation flags verbose answers and default Markdown tables as deterministic style failures.
+  - DockerHost API and worker services keep `ZAI_REASONING_EFFORT` and provider max-output-token defaults aligned, and production-config verification fails on drift.
 - Edge cases:
   - "这个模型准不准？" remains allowed but must answer with model limitations rather than a fixed accuracy claim.
   - "为什么没有推荐投注？" remains allowed and must cite trigger conditions.

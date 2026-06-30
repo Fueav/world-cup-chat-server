@@ -494,6 +494,10 @@ _STREAMING_OUTPUT_TAIL_CHARS = max(
     64,
     max(len(item) for item in _OUTPUT_POLICY_LEAK_PATTERNS) - 1,
 )
+_STREAMING_STYLE_MAX_CHARS = 980
+_MARKDOWN_TABLE_LINE_RE = re.compile(r"^\s*\|.+\|\s*$")
+_MARKDOWN_HORIZONTAL_RULE_RE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
+_MARKDOWN_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
 
 
 class StreamingOutputGuardrail:
@@ -510,6 +514,10 @@ class StreamingOutputGuardrail:
         self._pending = ""
         self._blocked = False
         self._language_gate_open = not _needs_language_gate(self._target_language)
+        self._style_line_buffer = ""
+        self._style_emitted_chars = 0
+        self._style_clamped = False
+        self._style_last_blank = False
         self.decision = _allow()
 
     @property
@@ -544,12 +552,14 @@ class StreamingOutputGuardrail:
         release_len = len(self._pending) - self._tail_chars
         chunk = self._pending[:release_len]
         self._pending = self._pending[release_len:]
-        return chunk or None
+        return self._filter_style_chunk(chunk, final=False)
 
     def finish(self) -> str | None:
         """Release the final safe tail or a safe refusal."""
-        if self._blocked or not self._pending:
+        if self._blocked:
             return None
+        if not self._pending:
+            return self._filter_style_chunk("", final=True)
         decision = evaluate_assistant_answer(
             self._pending,
             target_language=(
@@ -565,7 +575,61 @@ class StreamingOutputGuardrail:
             return decision.safe_response
         chunk = self._pending
         self._pending = ""
-        return chunk or None
+        return self._filter_style_chunk(chunk, final=True)
+
+    def _filter_style_chunk(self, text: str, *, final: bool) -> str | None:
+        """Apply deterministic concise-answer style before text is streamed."""
+        if self._style_clamped:
+            return None
+        combined = f"{self._style_line_buffer}{text}"
+        self._style_line_buffer = ""
+        if not combined and not final:
+            return None
+        lines = combined.splitlines(keepends=True)
+        if not final and lines:
+            last_line = lines[-1]
+            if not last_line.endswith(("\n", "\r")) and _should_buffer_style_line(
+                last_line
+            ):
+                self._style_line_buffer = lines.pop()
+        if final and self._style_line_buffer:
+            lines.append(self._style_line_buffer)
+            self._style_line_buffer = ""
+        filtered = "".join(
+            line
+            for line in (self._filter_style_line(line) for line in lines)
+            if line
+        )
+        return self._clamp_style_chunk(filtered)
+
+    def _filter_style_line(self, line: str) -> str:
+        stripped = line.strip()
+        if _MARKDOWN_TABLE_LINE_RE.match(stripped):
+            return ""
+        if _MARKDOWN_HORIZONTAL_RULE_RE.match(stripped):
+            return ""
+        if not stripped:
+            if self._style_last_blank:
+                return ""
+            self._style_last_blank = True
+            return "\n"
+        self._style_last_blank = False
+        return _MARKDOWN_HEADING_RE.sub("", line, count=1)
+
+    def _clamp_style_chunk(self, text: str) -> str | None:
+        if not text or self._style_clamped:
+            return None
+        remaining = _STREAMING_STYLE_MAX_CHARS - self._style_emitted_chars
+        if remaining <= 0:
+            self._style_clamped = True
+            return None
+        if len(text) <= remaining:
+            self._style_emitted_chars += len(text)
+            return text
+        clipped = _clip_to_terminal_text(text[:remaining])
+        self._style_clamped = True
+        self._style_emitted_chars += len(clipped)
+        return clipped or None
 
 
 def build_system_prompt(
@@ -939,6 +1003,23 @@ def _normalize(value: str) -> str:
 
 def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
     return any(needle.casefold() in text for needle in needles)
+
+
+def _should_buffer_style_line(line: str) -> bool:
+    """Hold incomplete table rows until newline so they can be removed safely."""
+    return line.lstrip().startswith("|")
+
+
+def _clip_to_terminal_text(text: str) -> str:
+    """Clip concise output at a sentence boundary and keep terminal punctuation."""
+    stripped = text.rstrip()
+    if not stripped:
+        return ""
+    boundary_chars = ".。!！?？;；"
+    best = max(stripped.rfind(char) for char in boundary_chars)
+    if best >= max(120, int(len(stripped) * 0.6)):
+        return stripped[: best + 1]
+    return f"{stripped.rstrip(' ,，、:：;；-')}."
 
 
 def _contains_output_policy_leak(value: str) -> bool:

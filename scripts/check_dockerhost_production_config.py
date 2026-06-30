@@ -54,6 +54,20 @@ def main() -> int:
         "WC2026_AGENT_API_TIMEOUT_S",
     ):
         _require(f"{name}:" in compose, f"compose must pass {name}", errors)
+    _require(
+        compose.count("ZAI_REASONING_EFFORT: ${ZAI_REASONING_EFFORT:-medium}") >= 2,
+        "api and worker must default ZAI_REASONING_EFFORT to medium",
+        errors,
+    )
+    _require(
+        compose.count(
+            "PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: "
+            "${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-2048}"
+        )
+        >= 2,
+        "api and worker must default provider max output tokens to 2048",
+        errors,
+    )
 
     if errors:
         for error in errors:
