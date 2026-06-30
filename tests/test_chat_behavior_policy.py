@@ -14,6 +14,7 @@ from app.runtime.chat_behavior import (
     detect_target_language,
     evaluate_assistant_answer,
     evaluate_user_message,
+    finalize_assistant_answer,
 )
 
 
@@ -46,6 +47,9 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "工具或中心化数据未提供" in prompt
     assert "不能编造 X/Y/Z" in prompt
     assert "≤1.5s" in prompt
+    assert "默认 3-5 条短要点" in prompt
+    assert "不要默认使用 Markdown 表格" in prompt
+    assert "先给结论" in prompt
     assert "no-bet" in prompt
     assert "Past performance does not guarantee future results" in prompt
     assert "指令优先级" in prompt
@@ -286,6 +290,40 @@ def test_output_guardrail_blocks_guaranteed_outcome_language():
     assert decision.action is GuardrailAction.REFUSE
     assert decision.category.value == "guaranteed_outcome"
     assert "不能保证" in decision.safe_response
+
+
+def test_finalize_assistant_answer_adds_chinese_market_risk_footer():
+    answer = "当前比赛没有推荐投注,因为概率差达到 10.7pp,但赔率 11.11 超出 1.70-2.40 区间。"
+
+    final = finalize_assistant_answer(answer, target_language=TARGET_LANGUAGE_ZH_HANS)
+
+    assert final.startswith(answer)
+    assert "不构成投注建议" in final
+    assert "不能代替你做最终决策" in final
+    assert finalize_assistant_answer(final, target_language=TARGET_LANGUAGE_ZH_HANS) == final
+
+
+def test_finalize_assistant_answer_adds_english_market_risk_footer():
+    answer = (
+        "EV compares model probability with the executable Polymarket market price. "
+        "Here the probability gap is below the recommendation threshold."
+    )
+
+    final = finalize_assistant_answer(answer, target_language=TARGET_LANGUAGE_EN)
+
+    assert final.startswith(answer)
+    assert "not betting advice" in final
+    assert "not a guarantee" in final
+    assert "risk" in final
+    assert finalize_assistant_answer(final, target_language=TARGET_LANGUAGE_EN) == final
+
+
+def test_finalize_assistant_answer_does_not_treat_better_as_bet():
+    answer = "This answer is better when it stays focused on model scope."
+
+    final = finalize_assistant_answer(answer, target_language=TARGET_LANGUAGE_EN)
+
+    assert final == answer
 
 
 def test_streaming_output_guardrail_default_tail_retains_64_chars():

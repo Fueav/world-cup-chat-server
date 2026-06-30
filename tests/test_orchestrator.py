@@ -628,6 +628,45 @@ async def test_output_guardrail_emits_error_event_without_raw_leak(deps):
     assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
 
 
+async def test_truncated_long_output_marks_run_failed_before_persisting(deps):
+    runtime, bus, message_repo, run_repo = deps
+
+    async def stream_fn(_messages, _info):
+        yield (
+            "当前比赛推荐投注解释如下。模型概率与 Polymarket 隐含概率存在差值, "
+            "赔率区间需要落在 1.70-2.40, 并且需要同时检查流动性和取消条件。"
+            + ("风险管理要求逐条核对。 " * 80)
+            + "这一规则的设计目的是风险管理, 单次"
+        )
+
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=stream_fn))
+    )
+    agent_run_id = "run-truncated-output-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    with pytest.raises(Exception) as exc:
+        await orchestrator.run(
+            agent_run_id=agent_run_id,
+            conversation_id="conv-truncated-output",
+            trace_id="trace-truncated-output",
+            user_message="当前比赛为什么会有或没有推荐投注？",
+        )
+    events = await collector
+
+    assert "TRUNCATED_OUTPUT" in str(exc.value)
+    assert not message_repo.added
+    assert ("mark_failed", (agent_run_id, "TRUNCATED_OUTPUT")) in run_repo.calls
+    errors = [event for event in events if event.type is EventType.ERROR]
+    assert errors
+    assert errors[-1].data["error"] == "TRUNCATED_OUTPUT"
+    assert events[-1].type is EventType.RUN_COMPLETED
+    assert events[-1].data["status"] == RunStatus.FAILED.value
+
+
 async def test_language_guardrail_blocks_english_stream_for_chinese_user(deps):
     runtime, bus, message_repo, _run_repo = deps
 

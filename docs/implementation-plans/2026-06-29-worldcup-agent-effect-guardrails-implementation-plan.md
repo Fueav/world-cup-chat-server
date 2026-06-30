@@ -52,6 +52,22 @@
      - `AI_BOUNDARY_APPROVED=1 SPEC_CONTRACT_APPROVED=1 make verify-release`
    - Rollback or compatibility note: `AI_BOUNDARY_APPROVED=1` acknowledges the user-requested runtime policy edit; failures must be fixed, not bypassed.
 
+6. Post-live-eval answer completeness hardening
+   - Files/modules: `app/runtime/chat_behavior.py`, `app/runtime/orchestrator.py`, `tests/live_eval/`.
+   - Behavior change: append a deterministic risk footer for allowed market/recommendation/EV answers when the model omits one; classify likely provider cutoffs as `TRUNCATED_OUTPUT` instead of persisting a partial successful answer; make live eval catch suspected truncation and accept compact "九维" wording.
+   - Data contract impact: no schema change; truncated realtime runs converge to failed status with sanitized error metadata.
+   - Tests to add/update: focused policy finalizer tests, orchestrator truncation test, live eval scorer fixture tests.
+   - Verification command: `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_orchestrator.py tests/live_eval/test_wc2026_effect_cases.py -q`.
+   - Rollback or compatibility note: revert this step if provider behavior changes and the truncation heuristic causes unacceptable false positives.
+
+7. Concise answer style hardening before live re-evaluation
+   - Files/modules: `app/runtime/chat_behavior.py`, `tests/test_chat_behavior_policy.py`, `tests/live_eval/`.
+   - Behavior change: instruct the model to answer conclusion-first with 3-5 short bullets by default, avoid Markdown tables unless explicitly requested, and make live eval score answer length/table usage as deterministic style checks.
+   - Data contract impact: none.
+   - Tests to add/update: prompt assertion and live-eval scorer style checks.
+   - Verification command: `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/live_eval/test_wc2026_effect_cases.py -q`.
+   - Rollback or compatibility note: if a future product flow requires long explanations, add explicit per-case `max_answer_chars` or an opt-in detailed-answer mode rather than weakening the default side-panel style.
+
 ## Risk Controls
 
 - Public contract risks: no route, field, schema, event, or status-code changes.

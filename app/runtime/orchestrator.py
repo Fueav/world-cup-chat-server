@@ -54,6 +54,8 @@ from app.runtime.chat_behavior import (
     build_language_instruction,
     detect_target_language,
     evaluate_user_message,
+    finalize_assistant_answer,
+    is_likely_truncated_answer,
 )
 from app.runtime.deps import RuntimeDeps
 from app.runtime.provider_limits import (
@@ -84,6 +86,13 @@ _TOOL_NAMES = (
     TOOL_WC2026_CURRENT_MATCH_CONTEXT,
     TOOL_WC2026_METHODOLOGY,
 )
+
+
+class TruncatedOutputError(RuntimeError):
+    """Raised after a run is converged failed for likely provider output cutoff."""
+
+    def __init__(self) -> None:
+        super().__init__("TRUNCATED_OUTPUT")
 
 
 class _EventEmitter:
@@ -253,6 +262,8 @@ class AgentOrchestrator:
         except ProviderRateLimitError as exc:
             await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
             raise
+        except TruncatedOutputError:
+            raise
         except Exception as exc:  # 顶层兜底,保证状态收敛为 FAILED
             return await self._handle_fatal(agent_run_id, emitter, exc)
 
@@ -396,8 +407,14 @@ class AgentOrchestrator:
                     target_language,
                 )
             answer = "".join(emitted_chunks)
-            return answer if answer.strip() else self._empty_answer(user_message)
+            if not answer.strip():
+                answer = self._empty_answer(user_message)
+            return await self._finalize_answer_integrity(
+                agent_run_id, answer, emitter, target_language
+            )
         except ProviderRateLimitError:
+            raise
+        except TruncatedOutputError:
             raise
         except Exception as exc:
             provider_error = await self._record_provider_exception(exc)
@@ -412,7 +429,41 @@ class AgentOrchestrator:
                 ) from exc
             await self._emit_error(emitter, "agent", exc)
             answer = "".join(emitted_chunks)
-            return answer if answer.strip() else self._empty_answer(user_message)
+            if not answer.strip():
+                answer = self._empty_answer(user_message)
+            return await self._finalize_answer_integrity(
+                agent_run_id, answer, emitter, target_language
+            )
+
+    async def _finalize_answer_integrity(
+        self,
+        agent_run_id: str,
+        answer: str,
+        emitter: _EventEmitter,
+        target_language: str,
+    ) -> str:
+        """Apply post-generation integrity and deterministic product-safety rules."""
+        if is_likely_truncated_answer(answer):
+            await emitter.emit(
+                EventType.ERROR,
+                {
+                    "stage": "output_integrity",
+                    "error": "TRUNCATED_OUTPUT",
+                },
+            )
+            await self._safe_run_repo("mark_failed", agent_run_id, "TRUNCATED_OUTPUT")
+            await emitter.emit(
+                EventType.RUN_COMPLETED,
+                {"status": RunStatus.FAILED.value, "error": "TRUNCATED_OUTPUT"},
+            )
+            raise TruncatedOutputError()
+        final_answer = finalize_assistant_answer(
+            answer, target_language=target_language
+        )
+        if final_answer != answer:
+            suffix = final_answer[len(answer) :]
+            await emitter.emit(EventType.TOKEN, {"token": suffix})
+        return final_answer
 
     async def _acquire_provider_quota(
         self, agent_run_id: str, user_message: str, route_type: str

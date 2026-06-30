@@ -116,10 +116,17 @@ def test_build_model_zai_uses_openai_chat_model_with_glm52_defaults():
         "max_tokens": 4096,
         "tool_stream": True,
         "thinking": {"type": "enabled"},
-        "reasoning_effort": "max",
+        "reasoning_effort": "medium",
     }
     assert model.profile.openai_chat_thinking_field == "reasoning_content"
     assert model.profile.openai_supports_strict_tool_definition is False
+
+
+def test_default_zai_effect_eval_budget_reduces_cutoff_risk():
+    settings = _settings()
+
+    assert settings.provider_default_max_output_tokens >= 2048
+    assert settings.zai_reasoning_effort == "medium"
 
 
 def test_build_model_anthropic_uses_anthropic_model():

@@ -47,6 +47,8 @@ from app.runtime.runner import (
 logger = get_logger(__name__)
 
 _WC2026_PREFIX = "/api/v1/wc2026"
+_MAX_DB_ID_LENGTH = 64
+_MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
 router = APIRouter(prefix=_WC2026_PREFIX, tags=["chat"])
 
@@ -84,6 +86,7 @@ async def create_chat(
         runtime_mode=settings.chat_runtime_mode,
     )
     idempotency_key = request.headers.get("idempotency-key")
+    _validate_idempotency_key(idempotency_key)
     request_hash = chat_request_hash(
         message=body.message,
         conversation_id=body.conversation_id,
@@ -342,6 +345,11 @@ def _validate_async_only(stream: bool) -> None:
 
 def _validate_wc2026_context(body: ChatRequest) -> dict[str, Any]:
     """Return trusted WC2026 context or reject the WC2026 chat request."""
+    if body.conversation_id is not None and len(str(body.conversation_id)) > _MAX_DB_ID_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="CONVERSATION_ID_TOO_LONG",
+        )
     context = body.wc2026_context
     if context is None:
         raise HTTPException(
@@ -354,6 +362,11 @@ def _validate_wc2026_context(body: ChatRequest) -> dict[str, Any]:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="WC2026_CONTEXT_REQUIRED",
         )
+    if len(current_match_id) > _MAX_DB_ID_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="WC2026_MATCH_ID_TOO_LONG",
+        )
     if body.match_id is not None and str(body.match_id).strip() != current_match_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -365,6 +378,17 @@ def _validate_wc2026_context(body: ChatRequest) -> dict[str, Any]:
             detail="WC2026_MATCH_ID_MISMATCH",
         )
     return context.model_dump(mode="json", exclude_none=True)
+
+
+def _validate_idempotency_key(idempotency_key: str | None) -> None:
+    """Reject idempotency keys that exceed the persisted column width."""
+    if idempotency_key is None:
+        return
+    if len(idempotency_key) > _MAX_IDEMPOTENCY_KEY_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="IDEMPOTENCY_KEY_TOO_LONG",
+        )
 
 
 async def _resolve_wc2026_conversation_id(

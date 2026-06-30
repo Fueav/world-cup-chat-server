@@ -228,6 +228,53 @@ async def test_wc2026_chat_requires_url_user_uuid_and_does_not_accept_header_onl
     assert header_only.status_code == 401
 
 
+async def test_wc2026_chat_rejects_overlong_user_uuid_before_side_effects():
+    from app.api.main import create_app
+
+    app = create_app()
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            f"/api/v1/wc2026/chat?user_uuid={'u' * 65}",
+            json={"message": "hello", "wc2026_context": _wc_context()},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "USER_UUID_TOO_LONG"
+
+
+async def test_wc2026_chat_rejects_overlong_idempotency_key_before_db_claim():
+    from app.api.routers import chat
+
+    class _Repos:
+        async def get_idempotency_record(self, *args, **kwargs):
+            raise AssertionError("repositories must not be touched")
+
+    request = SimpleNamespace(
+        headers={"idempotency-key": "k" * 257},
+        state=SimpleNamespace(trace_id="trace-overlong-idem"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(
+                message="hello",
+                metadata={"mode": "realtime"},
+                wc2026_context=_wc_context(),
+            ),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 422
+    assert getattr(exc.value, "detail", None) == "IDEMPOTENCY_KEY_TOO_LONG"
+
+
 async def test_legacy_chat_route_is_not_available():
     from app.api.main import create_app
 

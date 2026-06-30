@@ -20,7 +20,7 @@
 
 2. Middleware and dependency identity extraction.
    - Files/modules: `app/api/middleware.py`, `app/api/deps.py`.
-   - Behavior change: extract `user_uuid` from query for protected WC2026 chat-flow routes; remove header fallback for those routes; rate limit `/api/v1/wc2026/chat`.
+   - Behavior change: extract `user_uuid` from query for protected WC2026 chat-flow routes; reject overlong `user_uuid` before side effects; remove header fallback for those routes; rate limit `/api/v1/wc2026/chat`.
    - Data contract impact: internal `user_id` stores the query `user_uuid`.
    - Tests to add/update: missing/blank `user_uuid` and no-header accepted chat coverage.
    - Verification command: `.venv/bin/python -m pytest tests/test_chat_routing.py tests/test_cors.py -q`.
@@ -28,7 +28,7 @@
 
 3. Route migration.
    - Files/modules: `app/api/routers/chat.py`, `app/api/routers/stream.py`, `app/api/routers/runs.py`, `app/api/routers/conversations.py`.
-   - Behavior change: move chat-flow endpoints to `/api/v1/wc2026/*`; build returned stream/ws URLs with `user_uuid`.
+   - Behavior change: move chat-flow endpoints to `/api/v1/wc2026/*`; build returned stream/ws URLs with `user_uuid`; validate `conversation_id`, WC2026 `current_match_id`, and `Idempotency-Key` lengths before repository writes.
    - Data contract impact: response field names unchanged; URL values change.
    - Tests to add/update: accepted response URL assertions; old `/chat` 404; stream/runs/conversations owner checks with query identity.
    - Verification command: `.venv/bin/python -m pytest tests/test_chat_routing.py tests/test_stream_replay.py -q`.

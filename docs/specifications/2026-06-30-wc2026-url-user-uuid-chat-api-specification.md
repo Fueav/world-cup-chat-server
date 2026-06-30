@@ -47,7 +47,9 @@
   - `POST /api/v1/wc2026/conversations?user_uuid=<uuid>`
 - Request fields and validation:
   - Chat body remains `message`, optional `conversation_id`, optional `stream`, and optional `metadata`.
-  - Query `user_uuid` is required and must be non-blank.
+  - Query `user_uuid` is required, must be non-blank, and must fit the persisted `user_id` column (`<=64` characters).
+  - Optional `conversation_id` and injected WC2026 `current_match_id` must fit their persisted id columns (`<=64` characters).
+  - Optional `Idempotency-Key` must fit the persisted idempotency key column (`<=256` characters).
   - `stream=false` remains unsupported.
 - Response/envelope fields and types:
   - `ChatAccepted` field names and types remain unchanged.
@@ -55,6 +57,7 @@
   - SSE event names and payloads remain unchanged.
 - Status/error codes:
   - Missing/blank `user_uuid`: `401`.
+  - Overlong `user_uuid`, `conversation_id`, `current_match_id`, or `Idempotency-Key`: `422`.
   - Old chat-flow route usage: `404`.
   - Owner mismatch: `403`.
   - Idempotency conflict: `409`.

@@ -26,6 +26,7 @@ _BEARER_PREFIX = "Bearer "
 _TRACE_HEADER = "X-Trace-Id"
 _WC2026_PREFIX = "/api/v1/wc2026"
 _WC2026_USER_QUERY = "user_uuid"
+_MAX_USER_ID_LENGTH = 64
 
 # 无需鉴权即可访问的路径前缀(健康检查与文档)
 _PUBLIC_PREFIXES = (
@@ -109,6 +110,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 else "缺少鉴权凭证(Authorization Bearer 或 X-API-Key)"
             )
             return _json_error(401, detail)
+        if request.url.path.startswith(_WC2026_PREFIX) and len(user_id) > _MAX_USER_ID_LENGTH:
+            return _json_error(422, "USER_UUID_TOO_LONG")
         request.state.user_id = user_id
         return await call_next(request)
 
