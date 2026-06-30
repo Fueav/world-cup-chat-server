@@ -66,6 +66,7 @@ async def _fallback_orchestration(
     trace_id: str,
     user_message: str,
     emit: EmitFn,
+    wc2026_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """runtime 未就绪时的降级编排:自带完整生命周期信封,产出最小可用事件流。"""
     reply = f"[fallback] received: {user_message}"
@@ -102,6 +103,7 @@ async def _execute(
     user_message: str,
     user_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    wc2026_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """异步执行完整编排:状态流转 + 事件发布 + 调用 orchestrator。"""
     set_trace_id(trace_id)
@@ -122,6 +124,7 @@ async def _execute(
         emit=emit,
         user_id=user_id,
         metadata=metadata or {},
+        wc2026_context=wc2026_context,
     )
 
     intent = (result or {}).get("intent")
@@ -153,6 +156,7 @@ def run_agent_task(
     user_message: str,
     user_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    wc2026_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """worker 入口任务:运行一次 Agent 编排。
 
@@ -177,6 +181,7 @@ def run_agent_task(
                 user_message,
                 user_id=user_id,
                 metadata=metadata or {},
+                wc2026_context=wc2026_context,
             )
         )
     except ProviderRateLimitError as exc:

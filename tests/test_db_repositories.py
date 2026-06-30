@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy.exc import IntegrityError
 
 from app.api.repos import Repos
 from app.core.enums import RunStatus
-from app.core.models import IdempotencyRecord, Message, ToolCallLog
+from app.core.models import Conversation, IdempotencyRecord, Message, ToolCallLog
 from app.core.schemas import ChatAccepted
 
 
@@ -30,6 +31,34 @@ class _MemorySession:
 def test_message_model_binds_assistant_message_to_agent_run():
     assert "agent_run_id" in Message.__table__.columns
     assert Message.__table__.columns["agent_run_id"].nullable is True
+
+
+def test_conversation_model_persists_wc2026_match_binding():
+    columns = Conversation.__table__.columns
+    model_indexes = {
+        index.name: index
+        for index in Conversation.__table__.indexes
+        if isinstance(index, Index)
+    }
+    indexes = {
+        name: tuple(index.columns.keys()) for name, index in model_indexes.items()
+    }
+
+    assert "wc2026_match_id" in columns
+    assert columns["wc2026_match_id"].nullable is True
+    assert indexes["ix_conversation_user_wc2026_match"] == (
+        "user_id",
+        "wc2026_match_id",
+    )
+    assert indexes["uq_conversation_user_wc2026_match"] == (
+        "user_id",
+        "wc2026_match_id",
+    )
+    assert model_indexes["uq_conversation_user_wc2026_match"].unique is True
+    assert (
+        str(model_indexes["uq_conversation_user_wc2026_match"].dialect_options["postgresql"]["where"])
+        == "wc2026_match_id IS NOT NULL"
+    )
 
 
 def test_idempotency_record_has_unique_user_key_contract():
@@ -83,7 +112,55 @@ async def test_api_repos_ensure_conversation_creates_with_requested_id():
     session = _MemorySession()
     repos = Repos(session)
 
-    conversation = await repos.ensure_conversation("conv_requested", "user-1")
+    conversation = await repos.ensure_conversation(
+        "conv_requested", "user-1", wc2026_match_id="75"
+    )
 
     assert conversation.id == "conv_requested"
+    assert conversation.wc2026_match_id == "75"
     assert await repos.get_conversation("conv_requested") is conversation
+
+
+async def test_api_repos_ensure_conversation_recovers_wc2026_unique_conflict():
+    existing = Conversation(
+        id="conv-existing-75",
+        user_id="user-1",
+        wc2026_match_id="75",
+    )
+
+    class _ConflictSession(_MemorySession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.rolled_back = False
+
+        async def flush(self) -> None:
+            raise IntegrityError(
+                "insert conversation",
+                {},
+                Exception("duplicate user match"),
+            )
+
+        async def rollback(self) -> None:
+            self.rolled_back = True
+
+    class _Repos(Repos):
+        async def get_wc2026_conversation_id_by_match(self, user_id, match_id):
+            assert user_id == "user-1"
+            assert match_id == "75"
+            return "conv-existing-75"
+
+        async def get_conversation(self, conversation_id):
+            if conversation_id == "conv-racing-request":
+                return None
+            assert conversation_id == "conv-existing-75"
+            return existing
+
+    session = _ConflictSession()
+    repos = _Repos(session)
+
+    conversation = await repos.ensure_conversation(
+        "conv-racing-request", "user-1", wc2026_match_id="75"
+    )
+
+    assert session.rolled_back is True
+    assert conversation is existing

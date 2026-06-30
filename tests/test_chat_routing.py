@@ -12,6 +12,27 @@ from app.core.models import Conversation, Message
 from app.core.schemas import ChatRequest
 
 
+def _wc_context(match_id: str = "75", *, unlocked: bool = True) -> dict:
+    return {
+        "current_match_id": match_id,
+        "current_match": {
+            "id": match_id,
+            "fd_match_id": f"fd-{match_id}",
+            "description": "阿根廷 vs 法国",
+            "stage": "final",
+            "stage_label": "决赛",
+            "home": {"name": "阿根廷", "short_name": "ARG"},
+            "away": {"name": "法国", "short_name": "FRA"},
+            "is_unlocked": unlocked,
+        },
+        "entitlements": {
+            "has_all": False,
+            "unlocked_matches": [match_id] if unlocked else [],
+            "locked_matches": [] if unlocked else [match_id],
+        },
+    }
+
+
 def test_chat_routing_harness_can_represent_route_metadata():
     metadata = {"mode": "auto", "task_type": "chat"}
 
@@ -59,6 +80,22 @@ def test_accepted_response_preserves_existing_fields_and_adds_route_type():
     assert accepted.ws_url == "/api/v1/wc2026/ws/run-1?user_uuid=user-url-1"
 
 
+def test_wc2026_context_accepts_numeric_fd_match_id_from_upstream_doc():
+    request = ChatRequest(
+        message="hello",
+        wc2026_context={
+            **_wc_context("75"),
+            "current_match": {
+                **_wc_context("75")["current_match"],
+                "fd_match_id": 537401,
+            },
+        },
+    )
+
+    assert request.wc2026_context is not None
+    assert request.wc2026_context.current_match.fd_match_id == 537401
+
+
 async def test_chat_returned_conversation_id_can_fetch_detail():
     from app.api import deps
     from app.api.main import create_app
@@ -90,6 +127,12 @@ async def test_chat_returned_conversation_id_can_fetch_detail():
             return None
 
     class _MemoryRepos(Repos):
+        async def get_wc2026_conversation_id_by_match(self, user_id, match_id):
+            return None
+
+        async def get_conversation_wc2026_match_id(self, conversation_id):
+            return None
+
         async def get_conversation_with_messages(self, conversation_id):
             conversation = await self.get_conversation(conversation_id)
             if conversation is None:
@@ -143,7 +186,7 @@ async def test_chat_returned_conversation_id_can_fetch_detail():
     ) as client:
         resp = await client.post(
             f"/api/v1/wc2026/chat?user_uuid={user_uuid}",
-            json={"message": "hello"},
+            json={"message": "hello", "wc2026_context": _wc_context()},
         )
         assert resp.status_code == 202
         payload = resp.json()
@@ -216,6 +259,7 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
         message="hello",
         conversation_id="conv-1",
         metadata={"mode": "realtime"},
+        wc2026_context=_wc_context(),
     )
 
     class _ExistingRecord:
@@ -254,11 +298,12 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
     )
 
     response = await chat.create_chat(
-        ChatRequest(
-            message="hello",
-            conversation_id="conv-1",
-            metadata={"mode": "realtime"},
-        ),
+            ChatRequest(
+                message="hello",
+                conversation_id="conv-1",
+                metadata={"mode": "realtime"},
+                wc2026_context=_wc_context(),
+            ),
         request,
         "user-1",
         _Repos(),
@@ -266,6 +311,312 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
 
     assert response.agent_run_id == "run-existing"
     assert response.status is RunStatus.RUNNING
+
+
+def test_chat_request_preserves_wc2026_context_and_match_id():
+    body = ChatRequest(
+        message="hello",
+        match_id="75",
+        wc2026_context=_wc_context("75"),
+    )
+
+    assert body.match_id == "75"
+    assert body.wc2026_context.current_match_id == "75"
+    assert body.wc2026_context.current_match.id == "75"
+    assert body.wc2026_context.current_match.is_unlocked is True
+
+
+def test_chat_request_hash_changes_when_wc2026_context_changes():
+    from app.api.idempotency import chat_request_hash
+
+    first = chat_request_hash(
+        message="hello",
+        conversation_id="conv-1",
+        metadata={"mode": "realtime"},
+        wc2026_context=_wc_context("75"),
+    )
+    second = chat_request_hash(
+        message="hello",
+        conversation_id="conv-1",
+        metadata={"mode": "realtime"},
+        wc2026_context=_wc_context("76"),
+    )
+
+    assert first != second
+
+
+async def test_wc2026_chat_requires_trusted_context_before_side_effects():
+    from app.api.routers import chat
+
+    class _Repos:
+        async def get_idempotency_record(self, *args, **kwargs):
+            raise AssertionError("repositories must not be touched")
+
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-missing-context"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(message="hello", metadata={"mode": "realtime"}),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 422
+    assert getattr(exc.value, "detail", None) == "WC2026_CONTEXT_REQUIRED"
+
+
+async def test_conversation_cannot_switch_bound_match_before_capacity_reservation():
+    from app.api.routers import chat
+
+    class _Repos:
+        async def get_idempotency_record(self, user_id, idempotency_key):
+            return None
+
+        async def get_conversation(self, conversation_id):
+            return SimpleNamespace(id=conversation_id, user_id="user-1")
+
+        async def get_conversation_wc2026_match_id(self, conversation_id):
+            return "75"
+
+    class _Runner:
+        def try_acquire_capacity(self):
+            raise AssertionError("capacity must not be reserved on match conflict")
+
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-conflict"),
+        app=SimpleNamespace(state=SimpleNamespace(realtime_runner=_Runner())),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(
+                message="hello",
+                conversation_id="conv-1",
+                metadata={"mode": "realtime"},
+                wc2026_context=_wc_context("76"),
+            ),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 409
+    assert getattr(exc.value, "detail", None) == "WC2026_CONVERSATION_MATCH_CONFLICT"
+
+
+async def test_batch_run_plan_and_payload_include_wc2026_context(monkeypatch):
+    from app.api.routers import chat
+
+    captured: dict[str, dict] = {}
+    monkeypatch.setattr(
+        chat,
+        "_dispatch",
+        lambda payload: captured.setdefault("payload", payload),
+    )
+
+    class _Repos:
+        def __init__(self) -> None:
+            self.created_plan = None
+            self.created_task_payload = None
+
+        async def get_idempotency_record(self, user_id, idempotency_key):
+            return None
+
+        async def ensure_conversation(
+            self, conversation_id, user, wc2026_match_id=None
+        ):
+            return SimpleNamespace(id=conversation_id or "conv-created")
+
+        async def add_message(self, **kwargs):
+            return None
+
+        async def create_run(self, run_id, conversation_id, trace_id, plan):
+            self.created_plan = plan
+            return SimpleNamespace(id=run_id)
+
+        async def create_queued_task(self, **kwargs):
+            self.created_task_payload = kwargs["payload"]
+            return SimpleNamespace(id=kwargs["task_id"])
+
+        async def commit(self):
+            return None
+
+    repos = _Repos()
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-batch-context"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    response = await chat.create_chat(
+        ChatRequest(
+            message="hello",
+            metadata={"mode": "batch"},
+            wc2026_context=_wc_context("75", unlocked=False),
+        ),
+        request,
+        "user-1",
+        repos,
+    )
+
+    assert response.route_type == "batch"
+    assert repos.created_plan["wc2026_context"]["current_match_id"] == "75"
+    assert repos.created_task_payload["wc2026_context"]["current_match_id"] == "75"
+    assert captured["payload"]["wc2026_context"]["current_match_id"] == "75"
+
+
+async def test_chat_without_conversation_id_reuses_existing_same_match_conversation(
+    monkeypatch,
+):
+    from app.api.routers import chat
+
+    captured: dict[str, dict] = {}
+    monkeypatch.setattr(
+        chat,
+        "_dispatch",
+        lambda payload: captured.setdefault("payload", payload),
+    )
+
+    class _Repos:
+        def __init__(self) -> None:
+            self.created_plan = None
+            self.ensure_calls = []
+
+        async def get_idempotency_record(self, user_id, idempotency_key):
+            return None
+
+        async def get_wc2026_conversation_id_by_match(self, user_id, match_id):
+            assert user_id == "user-1"
+            assert match_id == "75"
+            return "conv-existing-75"
+
+        async def get_conversation(self, conversation_id):
+            assert conversation_id == "conv-existing-75"
+            return SimpleNamespace(id=conversation_id, user_id="user-1")
+
+        async def get_conversation_wc2026_match_id(self, conversation_id):
+            assert conversation_id == "conv-existing-75"
+            return "75"
+
+        async def ensure_conversation(
+            self, conversation_id, user, wc2026_match_id=None
+        ):
+            assert wc2026_match_id == "75"
+            self.ensure_calls.append((conversation_id, user))
+            return SimpleNamespace(id=conversation_id)
+
+        async def add_message(self, **kwargs):
+            return None
+
+        async def create_run(self, run_id, conversation_id, trace_id, plan):
+            self.created_plan = plan
+            return SimpleNamespace(id=run_id)
+
+        async def create_queued_task(self, **kwargs):
+            return SimpleNamespace(id=kwargs["task_id"])
+
+        async def commit(self):
+            return None
+
+    repos = _Repos()
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-reuse"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    response = await chat.create_chat(
+        ChatRequest(
+            message="hello",
+            metadata={"mode": "batch"},
+            wc2026_context=_wc_context("75"),
+        ),
+        request,
+        "user-1",
+        repos,
+    )
+
+    assert response.conversation_id == "conv-existing-75"
+    assert repos.ensure_calls == [("conv-existing-75", "user-1")]
+    assert repos.created_plan["wc2026_context"]["current_match_id"] == "75"
+    assert captured["payload"]["conversation_id"] == "conv-existing-75"
+
+
+async def test_new_realtime_wc2026_chat_locks_by_user_and_match(monkeypatch):
+    from app.api.routers import chat
+
+    monkeypatch.setattr(chat, "_dispatch_realtime", lambda *args, **kwargs: None)
+
+    class _Repos:
+        async def get_idempotency_record(self, user_id, idempotency_key):
+            return None
+
+        async def get_wc2026_conversation_id_by_match(self, user_id, match_id):
+            return None
+
+        async def ensure_conversation(
+            self, conversation_id, user, wc2026_match_id=None
+        ):
+            assert wc2026_match_id == "75"
+            return SimpleNamespace(id=conversation_id)
+
+        async def add_message(self, **kwargs):
+            return None
+
+        async def create_run(self, run_id, conversation_id, trace_id, plan):
+            return SimpleNamespace(id=run_id)
+
+        async def commit(self):
+            return None
+
+    class _Lease:
+        async def release(self):
+            return None
+
+    class _Lock:
+        def __init__(self) -> None:
+            self.keys = []
+
+        async def acquire(self, key, *args, **kwargs):
+            self.keys.append(key)
+            return _Lease()
+
+    class _CapacitySlot:
+        async def release(self):
+            return None
+
+    class _Runner:
+        def try_acquire_capacity(self):
+            return _CapacitySlot()
+
+    lock = _Lock()
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-new-match-lock"),
+        app=SimpleNamespace(
+            state=SimpleNamespace(conversation_lock=lock, realtime_runner=_Runner())
+        ),
+    )
+
+    response = await chat.create_chat(
+        ChatRequest(
+            message="first question",
+            metadata={"mode": "realtime"},
+            wc2026_context=_wc_context("75"),
+        ),
+        request,
+        "user-1",
+        _Repos(),
+    )
+
+    assert response.route_type == "realtime"
+    assert lock.keys == ["new_wc2026:user-1:75"]
 
 
 async def test_stream_false_is_rejected_before_side_effects():
@@ -332,6 +683,7 @@ async def test_forbidden_conversation_does_not_reserve_realtime_capacity():
                 message="hello",
                 conversation_id="conv-other",
                 metadata={"mode": "realtime"},
+                wc2026_context=_wc_context(),
             ),
             request,
             "user-1",
@@ -347,9 +699,11 @@ async def test_dispatch_realtime_keeps_strong_reference_until_task_done():
 
     started = asyncio.Event()
     finish = asyncio.Event()
+    seen_requests = []
 
     class _Runner:
         async def run_chat(self, request, *, conversation_lease=None, capacity_slot=None):
+            seen_requests.append(request)
             started.set()
             await finish.wait()
 
@@ -360,12 +714,14 @@ async def test_dispatch_realtime_keeps_strong_reference_until_task_done():
         "trace_id": "trace-1",
         "message": "hello",
         "metadata": {},
+        "wc2026_context": _wc_context("75"),
     }
 
     task = chat._dispatch_realtime(request, payload, "user-1", None)
     await asyncio.wait_for(started.wait(), timeout=1)
 
     assert task in chat._BACKGROUND_TASKS
+    assert seen_requests[0].wc2026_context["current_match_id"] == "75"
     finish.set()
     await asyncio.wait_for(task, timeout=1)
     assert task not in chat._BACKGROUND_TASKS

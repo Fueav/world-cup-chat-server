@@ -39,6 +39,8 @@ from app.core.enums import MessageRole, RunStatus
 from app.core.events import AgentEvent, EventType
 from app.core.logging import get_logger, log_with_fields, set_trace_id
 from app.runtime.agent_factory import (
+    TOOL_WC2026_CURRENT_MATCH_CONTEXT,
+    TOOL_WC2026_METHODOLOGY,
     TOOL_SEARCH_KNOWLEDGE,
     AgentDeps,
     build_agent,
@@ -63,6 +65,7 @@ from app.runtime.provider_limits import (
     provider_identity_from_settings,
 )
 from app.runtime.token_stream import TokenAggregator
+from app.runtime.wc2026_permissions import build_wc2026_context_instruction
 
 logger = get_logger(__name__)
 
@@ -73,7 +76,14 @@ _CHANNEL_PREFIX = "run:"
 # 顶层兜底文案
 _FATAL_ANSWER = "抱歉,处理过程中发生了内部错误,请稍后重试。"
 # 计划快照中记录的工具清单(供回放/观测)
-_TOOL_NAMES = (TOOL_SEARCH_KNOWLEDGE, "calculator", "clock", "web_search")
+_TOOL_NAMES = (
+    TOOL_SEARCH_KNOWLEDGE,
+    "calculator",
+    "clock",
+    "web_search",
+    TOOL_WC2026_CURRENT_MATCH_CONTEXT,
+    TOOL_WC2026_METHODOLOGY,
+)
 
 
 class _EventEmitter:
@@ -150,6 +160,7 @@ async def run_orchestration(
     emit: Any = None,
     user_id: str | None = None,
     metadata: dict[str, Any] | None = None,
+    wc2026_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """tasks 层集成入口(薄适配)。
 
@@ -170,6 +181,7 @@ async def run_orchestration(
         route_type="batch",
         user_id=user_id,
         metadata=metadata,
+        wc2026_context=wc2026_context,
     )
     return {"content": answer, "intent": None}
 
@@ -201,6 +213,7 @@ class AgentOrchestrator:
         route_type: str = "realtime",
         user_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        wc2026_context: dict[str, Any] | None = None,
     ) -> str:
         """执行一次完整运行,返回最终 assistant 文本。"""
         set_trace_id(trace_id)
@@ -224,6 +237,7 @@ class AgentOrchestrator:
                     metadata or {},
                     input_decision,
                     target_language,
+                    wc2026_context,
                 )
             return await self._execute(
                 agent_run_id,
@@ -234,6 +248,7 @@ class AgentOrchestrator:
                 user_id,
                 metadata or {},
                 target_language,
+                wc2026_context,
             )
         except ProviderRateLimitError as exc:
             await self._handle_provider_rate_limit(agent_run_id, emitter, exc)
@@ -251,6 +266,7 @@ class AgentOrchestrator:
         user_id: str | None,
         metadata: dict[str, Any],
         target_language: str,
+        wc2026_context: dict[str, Any] | None,
     ) -> str:
         """主控制流:历史 -> agentic loop -> 落库 -> 成功收尾。"""
         history = await self._load_history(conversation_id)
@@ -263,6 +279,7 @@ class AgentOrchestrator:
                 metadata,
                 self._deps.settings,
                 target_language=target_language,
+                wc2026_context=wc2026_context,
             ),
         )
         await emitter.emit(EventType.PLANNING_STARTED, {})
@@ -277,6 +294,7 @@ class AgentOrchestrator:
             user_id,
             metadata,
             target_language,
+            wc2026_context,
         )
 
         await emitter.emit(EventType.RESULT_COMPOSED, {"length": len(answer)})
@@ -308,6 +326,7 @@ class AgentOrchestrator:
         user_id: str | None,
         metadata: dict[str, Any],
         target_language: str,
+        wc2026_context: dict[str, Any] | None,
     ) -> str:
         """运行 PydanticAI agentic loop,映射事件流,返回最终文本。
 
@@ -334,6 +353,13 @@ class AgentOrchestrator:
             retrieval_top_k=self._deps.settings.retrieval_top_k,
             target_language=target_language,
             language_instruction=build_language_instruction(target_language),
+            wc2026_context=_clean_wc2026_context(wc2026_context),
+            wc2026_agent_data=self._deps.wc2026_agent_data,
+            wc2026_context_instruction=build_wc2026_context_instruction(
+                wc2026_context
+            )
+            if wc2026_context
+            else "",
         )
         limits = UsageLimits(request_limit=self._deps.settings.max_turns)
         message_history = _to_message_history(history)
@@ -650,6 +676,7 @@ class AgentOrchestrator:
         settings: Any,
         *,
         target_language: str | None = None,
+        wc2026_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return an engine snapshot for run audit/debugging."""
         plan: dict[str, Any] = {
@@ -664,6 +691,9 @@ class AgentOrchestrator:
         plan["policy_version"] = DEFAULT_CHAT_BEHAVIOR_POLICY.version
         if target_language:
             plan["target_language"] = target_language
+        clean_context = _clean_wc2026_context(wc2026_context)
+        if clean_context:
+            plan["wc2026_context"] = clean_context
         return plan
 
     async def _handle_guardrail_refusal(
@@ -675,6 +705,7 @@ class AgentOrchestrator:
         metadata: dict[str, Any],
         decision: GuardrailDecision,
         target_language: str,
+        wc2026_context: dict[str, Any] | None,
     ) -> str:
         """Converge a deterministic policy refusal without calling the model."""
         plan = self._plan_snapshot(
@@ -682,6 +713,7 @@ class AgentOrchestrator:
             metadata,
             self._deps.settings,
             target_language=target_language,
+            wc2026_context=wc2026_context,
         )
         plan["guardrail"] = decision.as_plan_metadata()
         await self._safe_run_repo(
@@ -922,9 +954,23 @@ def _plan_metadata(settings: Any, metadata: dict[str, Any]) -> dict[str, Any]:
         "target_language",
         "language_policy",
         "disable_language_guardrail",
+        "wc2026_context",
     ):
         output.pop(reserved_key, None)
     return output
+
+
+def _clean_wc2026_context(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return dict(value)
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump(mode="json", exclude_none=True)
+        if isinstance(dumped, dict):
+            return dumped
+    return None
 
 
 def _clean_text(value: Any) -> str | None:

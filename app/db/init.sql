@@ -5,12 +5,20 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS conversation (
-    id          VARCHAR(64) PRIMARY KEY,
-    user_id     VARCHAR(64),
-    title       VARCHAR(512),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id              VARCHAR(64) PRIMARY KEY,
+    user_id         VARCHAR(64),
+    wc2026_match_id VARCHAR(64),
+    title           VARCHAR(512),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE IF EXISTS conversation
+    ADD COLUMN IF NOT EXISTS wc2026_match_id VARCHAR(64);
+CREATE INDEX IF NOT EXISTS ix_conversation_user_wc2026_match
+    ON conversation (user_id, wc2026_match_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_conversation_user_wc2026_match
+    ON conversation (user_id, wc2026_match_id)
+    WHERE wc2026_match_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS message (
     id              VARCHAR(64) PRIMARY KEY,

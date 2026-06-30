@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -47,9 +48,20 @@ class Conversation(Base):
     """会话:一组消息与运行的容器。"""
 
     __tablename__ = "conversation"
+    __table_args__ = (
+        Index("ix_conversation_user_wc2026_match", "user_id", "wc2026_match_id"),
+        Index(
+            "uq_conversation_user_wc2026_match",
+            "user_id",
+            "wc2026_match_id",
+            unique=True,
+            postgresql_where=text("wc2026_match_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    wc2026_match_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

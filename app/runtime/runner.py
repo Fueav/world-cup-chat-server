@@ -24,6 +24,7 @@ class RealtimeRunRequest:
     message: str
     metadata: dict[str, Any]
     accepted_at: float
+    wc2026_context: dict[str, Any] | None = None
     route_type: str = "realtime"
 
 
@@ -140,6 +141,7 @@ class RealtimeRunner:
                     route_type=request.route_type,
                     user_id=request.user_id,
                     metadata=request.metadata,
+                    wc2026_context=request.wc2026_context,
                 ),
                 timeout=self._max_runtime_s,
             )

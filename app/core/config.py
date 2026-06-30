@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     dashscope_api_key_file: str = ""
     provider_secret_strict: bool = True
 
+    # --- WC2026 internal agent data API ---
+    wc2026_agent_api_base_url: str = ""
+    wc2026_agent_api_key: str = ""
+    wc2026_agent_api_timeout_s: float = 3.0
+
     @property
     def litellm_fallback_list(self) -> list[str]:
         """把逗号分隔的 fallback 配置解析为去空白的模型列表。"""

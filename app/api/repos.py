@@ -24,7 +24,6 @@ from app.core.models import (
     TaskState,
 )
 
-
 class Repos:
     """请求级仓储聚合,封装会话级数据访问。"""
 
@@ -44,11 +43,13 @@ class Repos:
         user_id: str | None,
         title: str | None,
         conversation_id: str | None = None,
+        wc2026_match_id: str | None = None,
     ) -> Conversation:
         """创建会话并刷新以获得 server_default 字段。"""
         conv = Conversation(
             id=conversation_id or new_conversation_id(),
             user_id=user_id,
+            wc2026_match_id=wc2026_match_id,
             title=title,
         )
         self._session.add(conv)
@@ -83,19 +84,82 @@ class Repos:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_conversations_with_wc2026_match_id(
+        self,
+        *,
+        user_id: str | None,
+        limit: int,
+        offset: int,
+        match_id: str | None = None,
+    ) -> list[tuple[Conversation, str | None]]:
+        """List conversations with their WC2026 match binding projection."""
+        stmt = select(Conversation).order_by(Conversation.updated_at.desc())
+        if user_id is not None:
+            stmt = stmt.where(Conversation.user_id == user_id)
+        if match_id:
+            stmt = stmt.where(Conversation.wc2026_match_id == match_id)
+        stmt = stmt.limit(limit).offset(offset)
+        result = await self._session.execute(stmt)
+        rows = list(result.scalars().all())
+        if match_id and not rows and offset == 0:
+            return await self._legacy_list_conversations_by_wc2026_match_id(
+                user_id=user_id,
+                match_id=match_id,
+                limit=limit,
+            )
+        projected = await self._wc2026_match_ids_by_conversation(
+            [row.id for row in rows]
+        )
+        return [(row, projected.get(row.id)) for row in rows]
+
+    async def get_wc2026_conversation_id_by_match(
+        self, user_id: str | None, match_id: str
+    ) -> str | None:
+        """Return the latest conversation id for this user and WC2026 match."""
+        rows = await self.list_conversations_with_wc2026_match_id(
+            user_id=user_id,
+            limit=1,
+            offset=0,
+            match_id=match_id,
+        )
+        if not rows:
+            return None
+        return rows[0][0].id
+
     async def ensure_conversation(
-        self, conversation_id: str | None, user_id: str | None
+        self,
+        conversation_id: str | None,
+        user_id: str | None,
+        wc2026_match_id: str | None = None,
     ) -> Conversation:
         """复用已有会话或新建一个,保证返回有效会话。"""
         if conversation_id:
             existing = await self.get_conversation(conversation_id)
             if existing is not None:
+                if wc2026_match_id and existing.wc2026_match_id is None:
+                    existing.wc2026_match_id = wc2026_match_id
+                    await self._session.flush()
                 return existing
-        return await self.create_conversation(
-            user_id=user_id,
-            title=None,
-            conversation_id=conversation_id,
-        )
+        try:
+            return await self.create_conversation(
+                user_id=user_id,
+                title=None,
+                conversation_id=conversation_id,
+                wc2026_match_id=wc2026_match_id,
+            )
+        except IntegrityError:
+            if not wc2026_match_id:
+                raise
+            await self._session.rollback()
+            existing_id = await self.get_wc2026_conversation_id_by_match(
+                user_id, wc2026_match_id
+            )
+            if existing_id is None:
+                raise
+            existing = await self.get_conversation(existing_id)
+            if existing is None:
+                raise
+            return existing
 
     # --- Message ---
 
@@ -141,6 +205,87 @@ class Repos:
         self._session.add(run)
         await self._session.flush()
         return run
+
+    async def get_conversation_wc2026_match_id(
+        self, conversation_id: str
+    ) -> str | None:
+        """Return the persisted WC2026 match binding, with run-plan fallback."""
+        conversation = await self.get_conversation(conversation_id)
+        if conversation is not None and conversation.wc2026_match_id:
+            return str(conversation.wc2026_match_id)
+        stmt = select(AgentRun.plan).where(AgentRun.conversation_id == conversation_id)
+        result = await self._session.execute(stmt)
+        for plan in result.scalars().all():
+            match_id = _plan_wc2026_match_id(plan)
+            if match_id:
+                return match_id
+        return None
+
+    async def _wc2026_match_ids_by_conversation(
+        self, conversation_ids: list[str]
+    ) -> dict[str, str]:
+        """Project conversation id -> first recorded WC2026 match id."""
+        if not conversation_ids:
+            return {}
+        conv_stmt = select(Conversation.id, Conversation.wc2026_match_id).where(
+            Conversation.id.in_(conversation_ids)
+        )
+        conv_result = await self._session.execute(conv_stmt)
+        output = {
+            str(conversation_id): str(match_id)
+            for conversation_id, match_id in conv_result.all()
+            if match_id
+        }
+        missing_ids = [
+            conversation_id
+            for conversation_id in conversation_ids
+            if str(conversation_id) not in output
+        ]
+        if not missing_ids:
+            return output
+        stmt = select(AgentRun.conversation_id, AgentRun.plan).where(
+            AgentRun.conversation_id.in_(missing_ids)
+        )
+        result = await self._session.execute(stmt)
+        for conversation_id, plan in result.all():
+            if conversation_id in output:
+                continue
+            match_id = _plan_wc2026_match_id(plan)
+            if match_id:
+                output[str(conversation_id)] = match_id
+        return output
+
+    async def _legacy_list_conversations_by_wc2026_match_id(
+        self,
+        *,
+        user_id: str | None,
+        match_id: str,
+        limit: int,
+    ) -> list[tuple[Conversation, str | None]]:
+        """Fallback for conversations created before wc2026_match_id existed."""
+        stmt = (
+            select(Conversation)
+            .join(AgentRun, AgentRun.conversation_id == Conversation.id)
+            .where(
+                AgentRun.plan["wc2026_context"][
+                    "current_match_id"
+                ].as_string()
+                == match_id
+            )
+            .order_by(Conversation.updated_at.desc())
+            .limit(limit)
+        )
+        if user_id is not None:
+            stmt = stmt.where(Conversation.user_id == user_id)
+        result = await self._session.execute(stmt)
+        rows = []
+        seen: set[str] = set()
+        for row in result.scalars().all():
+            if row.id in seen:
+                continue
+            seen.add(row.id)
+            rows.append((row, match_id))
+        return rows
 
     async def get_idempotency_record(
         self, user_id: str, idempotency_key: str
@@ -239,3 +384,16 @@ class Repos:
 def utcnow() -> datetime:
     """返回带时区的当前时间,统一时间来源。"""
     return datetime.now(timezone.utc)
+
+
+def _plan_wc2026_match_id(plan: dict | None) -> str | None:
+    if not isinstance(plan, dict):
+        return None
+    context = plan.get("wc2026_context")
+    if not isinstance(context, dict):
+        return None
+    match_id = context.get("current_match_id")
+    if match_id is None:
+        return None
+    text = str(match_id).strip()
+    return text or None

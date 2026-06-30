@@ -50,6 +50,8 @@ _MOCK_CHUNK_SIZE = 12
 
 # 知识检索工具名(mock 模型据此判断是否先检索一轮)
 TOOL_SEARCH_KNOWLEDGE = "search_knowledge"
+TOOL_WC2026_CURRENT_MATCH_CONTEXT = "get_current_wc2026_match_context"
+TOOL_WC2026_METHODOLOGY = "get_wc2026_model_methodology"
 
 # Agent 的系统提示词由版本化行为策略构造,便于审计和回归。
 _SYSTEM_PROMPT = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
@@ -76,6 +78,9 @@ class AgentDeps:
     retrieval_top_k: int = 5
     target_language: str = "unknown"
     language_instruction: str = ""
+    wc2026_context: dict[str, Any] | None = None
+    wc2026_agent_data: Any | None = None
+    wc2026_context_instruction: str = ""
 
 
 def build_agent(model: Model) -> Agent[AgentDeps, str]:
@@ -95,6 +100,11 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
     def run_language_policy(ctx: RunContext[AgentDeps]) -> str:
         """Inject per-run language policy without mutating user messages."""
         return ctx.deps.language_instruction
+
+    @agent.instructions
+    def run_wc2026_context_policy(ctx: RunContext[AgentDeps]) -> str:
+        """Inject current-match permission context for WC2026 runs."""
+        return ctx.deps.wc2026_context_instruction
 
     @agent.tool
     async def search_knowledge(
@@ -139,6 +149,42 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         return await ctx.deps.tool_router.route(
             query, "web_search", agent_run_id=ctx.deps.agent_run_id
         )
+
+    @agent.tool
+    async def get_current_wc2026_match_context(
+        ctx: RunContext[AgentDeps], locale: str = "zh-Hans"
+    ) -> dict[str, Any]:
+        """读取当前对话绑定比赛的 WC2026 中心化上下文。
+
+        工具不接受 match_id;实际 match_id 只能来自 server 注入的
+        wc2026_context.current_match_id。
+        """
+        if ctx.deps.wc2026_agent_data is None:
+            return {
+                "ok": False,
+                "status": "central_unavailable",
+                "message": "WC2026_AGENT_DATA_CLIENT_UNAVAILABLE",
+            }
+        return await ctx.deps.wc2026_agent_data.get_current_match_context(
+            ctx.deps.wc2026_context,
+            locale=locale,
+        )
+
+    @agent.tool
+    async def get_wc2026_model_methodology(
+        ctx: RunContext[AgentDeps], locale: str = "zh-Hans"
+    ) -> dict[str, Any]:
+        """读取 WC2026 模型方法论。
+
+        这是跨场通用公开方法论,不接受 match_id。
+        """
+        if ctx.deps.wc2026_agent_data is None:
+            return {
+                "ok": False,
+                "status": "central_unavailable",
+                "message": "WC2026_AGENT_DATA_CLIENT_UNAVAILABLE",
+            }
+        return await ctx.deps.wc2026_agent_data.get_methodology(locale=locale)
 
     return agent
 

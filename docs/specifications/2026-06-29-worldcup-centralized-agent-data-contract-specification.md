@@ -27,13 +27,13 @@
 - State model:
   - The central data tool is read-only from the Agent perspective.
   - Snapshot identity must be stable through `snapshot_id` and `generated_at`.
-  - No cross-session personalization is required beyond server-side unlock masking.
+  - No cross-session personalization is required in the central full-payload interface.
 - Ownership and identity rules:
-  - Central service owns current-match data, paid-content masking, and model snapshot provenance.
-  - Chat server owns natural-language explanation, guardrails, refusal behavior, and answer formatting.
+  - Central service owns current-match data and model snapshot provenance.
+  - Chat server owns current-user paid-content masking, natural-language explanation, guardrails, refusal behavior, and answer formatting.
 - Permissions/authentication:
   - The Agent must not accept user-supplied unlock flags.
-  - The central service must derive unlock state from trusted auth/session context and either omit or mask locked values.
+  - The current central match-context endpoint returns full internal data; Chat Server must derive unlock state from trusted upstream context and either omit or mask locked values before LLM exposure.
 - Empty, error, retry, timeout, duplicate, and partial-failure behavior:
   - Missing data must be represented explicitly in `data_status`, `missing_fields`, and per-section `status`.
   - Stale data must include `stale: true`, `as_of`, and a human-readable `stale_reason`.
@@ -160,8 +160,8 @@ Used for match-switch active messages: match name, home win rate, expected goals
 
 ```ts
 type RecommendationContext = {
-  status: "recommended" | "not_recommended" | "locked" | "insufficient_data" | "unsupported_market";
-  market_side?: "home_win" | "away_win" | "draw" | "home_handicap" | "away_handicap" | "over" | "under" | null;
+  status: "recommended" | "not_recommended" | "insufficient_data" | "locked";
+  market_side?: BestEdgeMarket | null;
   recommendation_label?: string | null;
   model_probability?: number | null;
   polymarket_implied_probability?: number | null;
@@ -175,18 +175,44 @@ type RecommendationContext = {
   explanation_public: string;
 };
 
+type BestEdgeMarket =
+  | "home_win"
+  | "away_win"
+  | "draw"
+  | "score_0_0"
+  | "score_0_1"
+  | "score_0_2"
+  | "score_0_3"
+  | "score_1_0"
+  | "score_1_1"
+  | "score_1_2"
+  | "score_1_3"
+  | "score_2_0"
+  | "score_2_1"
+  | "score_2_2"
+  | "score_2_3"
+  | "score_3_0"
+  | "score_3_1"
+  | "score_3_2"
+  | "score_3_3"
+  | "score_any_other";
+
 type RecommendationReason =
+  | "missing_probability"
   | "gap_below_4pp"
   | "odds_outside_1_70_2_40"
-  | "unsupported_market"
-  | "negative_or_out_of_scope_handicap"
-  | "liquidity_too_thin"
-  | "lineup_unconfirmed"
-  | "model_confidence_low"
-  | "locked"
-  | "missing_probability"
   | "missing_market_price";
 ```
+
+Recommendation enum semantics confirmed by centralized data owner:
+
+- `market_side` comes only from `pred_best_edge_market`.
+- Best-edge selection supports only 1X2 and exact-score markets. It does not support `home_handicap`, `away_handicap`, `over`, or `under`.
+- If a model somehow emits over/under/handicap, there is no corresponding `oddsForSelection` price column, so the recommendation must resolve as `missing_market_price`, not as a separate unsupported-market state.
+- The central full-payload interface currently returns unlocked internal data and therefore does not return `locked`; `locked` is reserved for a future user-masked mode or for Chat Server-side masked projections.
+- `insufficient_data` with `missing_probability` means the match has no model prediction payload.
+- `not_recommended` with `missing_market_price` means the model selected a best-edge market but the matching odds column is null.
+- Other no-recommendation reasons are limited to `gap_below_4pp` and `odds_outside_1_70_2_40`.
 
 Required for Section 2.1:
 
@@ -390,10 +416,10 @@ type ProvenanceContext = {
 - Functional:
   - Teammates can implement one aggregate read-only interface that supports all Section 2 positive examples.
   - Contract defines which fields are mandatory, nullable, locked, stale, or missing.
-  - Contract prevents locked Block B and Block D exact values from being sent to the Agent for locked viewers.
+  - Contract documents that the current full-payload interface is internal/unlocked; Chat Server masks Block B, Block D, and 9D paid values before LLM exposure for locked viewers.
   - Contract includes risk flags and disclaimer text required by Section 5.
 - Edge cases:
-  - Locked viewer returns public explanation with exact paid values omitted.
+  - Locked viewer is handled by the Chat Server masked projection with exact paid values omitted.
   - Missing market price returns `missing_market_price` and allows no-recommendation explanation.
   - Missing model probability returns `missing_probability` and prevents exact win-rate answer.
   - Lineup update returns reprice state and the mandated "首发已更新，预测已重新定价" message.
@@ -412,12 +438,12 @@ type ProvenanceContext = {
 
 - Open questions:
   - Exact dimension keys and labels for the 9 strength-index dimensions.
-  - Exact semantics for "negative_or_out_of_scope_handicap" from product copy should be confirmed with product/backend.
   - Whether odds are sourced from Polymarket, an internal odds table, or both.
   - Whether `viewer_context_ref` is available inside the Chat Server or must be injected by frontend/session middleware.
 - Accepted assumptions:
   - Aggregate snapshot is preferable for Agent consistency and latency.
-  - Locked paid values should be omitted/masked by the data service, not merely hidden by prompt instruction.
+  - Current central full payload is internal and may return all paid values for a match; Chat Server owns current-user masking before LLM/tool exposure.
+  - Future central masked mode may return `locked`, but the current full-payload endpoint does not.
   - Methodological constants `k=0.943` and `ρ=-0.15` can be returned even when match-specific paid values are locked.
 - Rejected alternatives:
   - Do not expose raw model internals or debug traces to the Agent as a substitute for public explanation fields.

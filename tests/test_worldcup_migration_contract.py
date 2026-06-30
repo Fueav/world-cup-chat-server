@@ -40,3 +40,22 @@ def test_sample_knowledge_is_worldcup_seed_not_moss_seed():
     assert "no-bet" in serialized
     assert "MOSS" not in serialized
     assert "Ask this Agent" not in serialized
+
+
+def test_init_sql_persists_wc2026_conversation_match_binding():
+    sql = (ROOT / "app" / "db" / "init.sql").read_text(encoding="utf-8").lower()
+    migration = (
+        ROOT
+        / "app"
+        / "db"
+        / "migrations"
+        / "2026-06-30-wc2026-conversation-match-binding.sql"
+    ).read_text(encoding="utf-8").lower()
+
+    assert "wc2026_match_id" in sql
+    assert "alter table if exists conversation" in sql
+    assert "ix_conversation_user_wc2026_match" in sql
+    assert "uq_conversation_user_wc2026_match" in sql
+    assert "wc2026_match_id" in migration
+    assert "alter table if exists conversation" in migration
+    assert "uq_conversation_user_wc2026_match" in migration

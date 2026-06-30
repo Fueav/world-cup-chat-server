@@ -55,6 +55,31 @@ async def _ensure_tables() -> None:
             await conn.execute(
                 text(
                     """
+                    ALTER TABLE IF EXISTS conversation
+                        ADD COLUMN IF NOT EXISTS wc2026_match_id VARCHAR(64);
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_conversation_user_wc2026_match
+                        ON conversation (user_id, wc2026_match_id);
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_conversation_user_wc2026_match
+                        ON conversation (user_id, wc2026_match_id)
+                        WHERE wc2026_match_id IS NOT NULL;
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
                     CREATE UNIQUE INDEX IF NOT EXISTS uq_message_assistant_per_run
                         ON message (agent_run_id, role)
                         WHERE agent_run_id IS NOT NULL AND role = 'ASSISTANT';

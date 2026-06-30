@@ -135,6 +135,7 @@ class RuntimeDeps:
     metrics: Metrics | None = None
     provider_limiter: Any | None = None
     secret_provider: SecretProvider | None = None
+    wc2026_agent_data: Any | None = None
 
 
 def build_deps(
@@ -165,6 +166,7 @@ def build_deps(
         event_bus = event_bus or _build_event_bus(settings, redis_client)
         message_repo, run_repo = _build_repos(session)
         secret_provider = secret_provider or build_secret_provider(settings)
+        wc2026_agent_data = _build_wc2026_agent_data(settings)
         provider_limiter = provider_limiter or build_provider_limiter(
             settings, redis_client=redis_client, metrics=metrics
         )
@@ -187,6 +189,7 @@ def build_deps(
         metrics=metrics or Metrics(),
         provider_limiter=provider_limiter,
         secret_provider=secret_provider,
+        wc2026_agent_data=wc2026_agent_data,
     )
 
 
@@ -252,3 +255,9 @@ def _build_tool_log_sink(session: Any | None):
             await scoped.commit()
 
     return sink
+
+
+def _build_wc2026_agent_data(settings: Settings) -> Any:
+    from app.runtime.wc2026_agent_data import build_wc2026_agent_data_service
+
+    return build_wc2026_agent_data_service(settings)

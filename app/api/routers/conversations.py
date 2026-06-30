@@ -56,12 +56,9 @@ async def get_conversation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在")
     _assert_owner(conv.user_id, user)
     messages = [MessageOut.model_validate(m) for m in conv.messages]
+    wc2026_match_id = await _conversation_wc2026_match_id(repos, conv.id)
     return ConversationDetailOut(
-        id=conv.id,
-        user_id=conv.user_id,
-        title=conv.title,
-        created_at=conv.created_at,
-        updated_at=conv.updated_at,
+        **_conversation_out_fields(conv, wc2026_match_id=wc2026_match_id),
         messages=messages,
     )
 
@@ -72,8 +69,23 @@ async def list_conversations(
     repos: ReposDep,
     limit: Annotated[int, Query(ge=1, le=_MAX_PAGE_SIZE)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    match_id: Annotated[str | None, Query(min_length=1)] = None,
 ) -> Any:
     """分页列出当前用户的会话。"""
+    list_with_match = getattr(repos, "list_conversations_with_wc2026_match_id", None)
+    if callable(list_with_match):
+        rows = await list_with_match(
+            user_id=user,
+            limit=limit,
+            offset=offset,
+            match_id=match_id,
+        )
+        return [
+            ConversationOut(
+                **_conversation_out_fields(row, wc2026_match_id=wc2026_match_id)
+            )
+            for row, wc2026_match_id in rows
+        ]
     rows = await repos.list_conversations(user_id=user, limit=limit, offset=offset)
     return [ConversationOut.model_validate(c) for c in rows]
 
@@ -84,3 +96,28 @@ def _assert_owner(owner_id: str | None, user: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="无权访问该会话"
         )
+
+
+async def _conversation_wc2026_match_id(
+    repos: ReposDep, conversation_id: str
+) -> str | None:
+    getter = getattr(repos, "get_conversation_wc2026_match_id", None)
+    if not callable(getter):
+        return None
+    try:
+        return await getter(conversation_id)
+    except AttributeError:
+        return None
+
+
+def _conversation_out_fields(
+    conv: Any, *, wc2026_match_id: str | None
+) -> dict[str, Any]:
+    return {
+        "id": conv.id,
+        "user_id": conv.user_id,
+        "title": conv.title,
+        "wc2026_match_id": wc2026_match_id,
+        "created_at": conv.created_at,
+        "updated_at": conv.updated_at,
+    }

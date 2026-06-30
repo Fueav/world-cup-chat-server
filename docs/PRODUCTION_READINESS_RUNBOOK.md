@@ -21,6 +21,13 @@
 
 Use local secret env files only; do not put secrets in this repository.
 
+For existing Postgres volumes, apply this migration before routing traffic to a
+build that reads `conversation.wc2026_match_id`:
+
+```text
+app/db/migrations/2026-06-30-wc2026-conversation-match-binding.sql
+```
+
 ```bash
 source /Users/chris/.codex-local/dockerhost/envctl_env.sh
 source /Users/chris/.codex-local/world-cup-chat-server/zai_env.sh
@@ -42,6 +49,8 @@ export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=512
 export WORKER_POOL=prefork
 export WORKER_CONCURRENCY=2
 export REAPER_ENABLED=true
+export WC2026_AGENT_API_BASE_URL=http://viki-api:8080
+export WC2026_AGENT_API_TIMEOUT_S=3
 
 envctl up \
   --name chris-world-cup-chat-server \
@@ -49,7 +58,8 @@ envctl up \
   --git-ref <branch-or-sha> \
   --git-subdir dockerhost \
   --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  --secret-env GEMINI_API_KEY \
+  --secret-env WC2026_AGENT_API_KEY
 ```
 
 For correctness-first smoke fallback:
@@ -75,15 +85,15 @@ curl -fsS "$BASE_URL/metrics" | head
 ```bash
 curl -fsS "$BASE_URL/chat" \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer smoke-user' \
+  -H "Authorization: Bearer ${CHAT_AUTH_TOKEN:?set CHAT_AUTH_TOKEN}" \
   -d '{"message":"用一句话说明你会如何分析一场世界杯淘汰赛。","stream":true,"metadata":{"mode":"realtime"}}'
 ```
 
 Use the returned `stream_url`:
 
 ```bash
-curl -N -H 'Authorization: Bearer smoke-user' "$BASE_URL/stream/<run_id>"
-curl -fsS -H 'Authorization: Bearer smoke-user' "$BASE_URL/runs/<run_id>"
+curl -N -H "Authorization: Bearer ${CHAT_AUTH_TOKEN:?set CHAT_AUTH_TOKEN}" "$BASE_URL/stream/<run_id>"
+curl -fsS -H "Authorization: Bearer ${CHAT_AUTH_TOKEN:?set CHAT_AUTH_TOKEN}" "$BASE_URL/runs/<run_id>"
 ```
 
 RAG smoke:

@@ -44,8 +44,16 @@ def main() -> int:
         "REAPER_MAX_ATTEMPTS",
         "WORKER_POOL",
         "WORKER_CONCURRENCY",
+        "WC2026_AGENT_API_BASE_URL",
+        "WC2026_AGENT_API_TIMEOUT_S",
     ):
         _require(f"{name}=" in env_example, f"env.example must document {name}", errors)
+    for name in (
+        "WC2026_AGENT_API_BASE_URL",
+        "WC2026_AGENT_API_KEY",
+        "WC2026_AGENT_API_TIMEOUT_S",
+    ):
+        _require(f"{name}:" in compose, f"compose must pass {name}", errors)
 
     if errors:
         for error in errors:

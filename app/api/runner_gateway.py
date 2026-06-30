@@ -48,6 +48,7 @@ def enqueue_run(payload: dict) -> None:
             user_message=payload["message"],
             user_id=payload.get("user_id"),
             metadata=payload.get("metadata") or {},
+            wc2026_context=payload.get("wc2026_context"),
         )
     except Exception as exc:
         log_with_fields(

@@ -22,7 +22,11 @@ from app.core.config import get_settings
 from app.core.enums import MessageRole, RunStatus
 from app.core.events import EventType
 from app.core.metrics import InMemoryMetrics
-from app.runtime.agent_factory import build_agent, build_mock_model
+from app.runtime.agent_factory import (
+    TOOL_WC2026_CURRENT_MATCH_CONTEXT,
+    build_agent,
+    build_mock_model,
+)
 from app.runtime.chat_behavior import TARGET_LANGUAGE_ZH_HANS
 from app.runtime.deps import RuntimeDeps
 from app.runtime.orchestrator import AgentOrchestrator
@@ -57,6 +61,17 @@ class _FakeToolRouter:
             "result": {"echo": query},
             "status": "DONE",
         }
+
+
+class _FakeWc2026AgentData:
+    def __init__(self) -> None:
+        self.contexts: list[dict[str, Any]] = []
+
+    async def get_current_match_context(
+        self, wc2026_context: dict[str, Any] | None, *, locale: str = "zh-Hans"
+    ) -> dict[str, Any]:
+        self.contexts.append(dict(wc2026_context or {}))
+        return {"ok": True, "status": "ok", "match_id": "75", "payload": {}}
 
 
 class _FakeMessageRepo:
@@ -169,6 +184,20 @@ def _has_tool_result(messages: list[Any]) -> bool:
     )
 
 
+def _wc_context(match_id: str = "75") -> dict[str, Any]:
+    return {
+        "current_match_id": match_id,
+        "current_match": {
+            "id": match_id,
+            "description": "阿根廷 vs 法国",
+            "home": {"name": "阿根廷"},
+            "away": {"name": "法国"},
+            "is_unlocked": True,
+        },
+        "entitlements": {"has_all": False},
+    }
+
+
 def _make_tool_then_answer_model(
     tool_name: str, tool_args: dict[str, Any], answer: str
 ) -> FunctionModel:
@@ -246,6 +275,48 @@ def test_plan_snapshot_removes_client_rag_metadata_by_default():
     assert plan["metadata"] == {"mode": "realtime"}
     assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v4"
     assert plan["target_language"] == "zh-Hans"
+
+
+async def test_wc2026_context_reaches_agent_tool_and_run_plan(deps):
+    runtime, _bus, _message_repo, run_repo = deps
+    wc_data = _FakeWc2026AgentData()
+    runtime.wc2026_agent_data = wc_data
+
+    async def stream_fn(messages, _info):
+        if not _has_tool_result(messages):
+            yield {
+                0: DeltaToolCall(
+                    name=TOOL_WC2026_CURRENT_MATCH_CONTEXT,
+                    json_args=json.dumps({}, ensure_ascii=False),
+                )
+            }
+            return
+        yield "当前比赛上下文已读取。"
+
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=stream_fn))
+    )
+
+    answer = await orchestrator.run(
+        agent_run_id="run-wc-context-1",
+        conversation_id="conv-wc-context",
+        trace_id="trace-wc-context",
+        user_message="这场比赛怎么看?",
+        wc2026_context=_wc_context("75"),
+    )
+
+    assert "当前比赛" in answer
+    assert wc_data.contexts == [_wc_context("75")]
+    plan_calls = [
+        args[2]
+        for name, args in run_repo.calls
+        if name == "mark_running_with_plan"
+    ]
+    assert plan_calls
+    plan = plan_calls[0]
+    assert TOOL_WC2026_CURRENT_MATCH_CONTEXT in plan["tools"]
+    assert plan["wc2026_context"]["current_match_id"] == "75"
+    assert "wc2026_context" not in plan["metadata"]
 
 
 async def _collect_events(bus: InMemoryEventBus, channel: str, ready_evt):

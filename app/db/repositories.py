@@ -95,10 +95,19 @@ class ConversationRepository(_BaseRepository):
     """会话仓储。"""
 
     async def create(
-        self, conversation_id: str, user_id: str | None = None, title: str | None = None
+        self,
+        conversation_id: str,
+        user_id: str | None = None,
+        title: str | None = None,
+        wc2026_match_id: str | None = None,
     ) -> Conversation:
         """新建会话并返回持久化后的实体。"""
-        entity = Conversation(id=conversation_id, user_id=user_id, title=title)
+        entity = Conversation(
+            id=conversation_id,
+            user_id=user_id,
+            title=title,
+            wc2026_match_id=wc2026_match_id,
+        )
         self._session.add(entity)
         return await self._commit_refresh(entity, "Conversation")
 
@@ -114,14 +123,21 @@ class ConversationRepository(_BaseRepository):
             raise EntityNotFoundError("Conversation", conversation_id)
         return entity
 
-    async def ensure(self, conversation_id: str | None) -> Conversation:
+    async def ensure(
+        self, conversation_id: str | None, wc2026_match_id: str | None = None
+    ) -> Conversation:
         """幂等获取或创建会话:传 None 时生成新会话。"""
         if conversation_id is None:
-            return await self.create(new_conversation_id())
+            return await self.create(
+                new_conversation_id(), wc2026_match_id=wc2026_match_id
+            )
         existing = await self.get(conversation_id)
         if existing is not None:
+            if wc2026_match_id and existing.wc2026_match_id is None:
+                existing.wc2026_match_id = wc2026_match_id
+                return await self._commit_refresh(existing, "Conversation")
             return existing
-        return await self.create(conversation_id)
+        return await self.create(conversation_id, wc2026_match_id=wc2026_match_id)
 
     async def update_title(self, conversation_id: str, title: str) -> Conversation:
         """更新会话标题,返回更新后的实体(重载后赋值)。"""

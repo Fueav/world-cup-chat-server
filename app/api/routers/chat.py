@@ -75,10 +75,10 @@ async def create_chat(
     """受理一次对话/任务请求。"""
     _validate_message(body.message)
     _validate_async_only(body.stream)
+    wc2026_context = _validate_wc2026_context(body)
     settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
     run_id = new_run_id()
-    conversation_id = body.conversation_id or new_conversation_id()
     route_type = select_route_type(
         body.metadata,
         runtime_mode=settings.chat_runtime_mode,
@@ -88,6 +88,7 @@ async def create_chat(
         message=body.message,
         conversation_id=body.conversation_id,
         metadata=body.metadata,
+        wc2026_context=wc2026_context,
     )
     if idempotency_key:
         replay = await _try_idempotency_replay(
@@ -96,6 +97,12 @@ async def create_chat(
         if replay is not None:
             return replay
 
+    conversation_id, conversation_is_existing = await _resolve_wc2026_conversation_id(
+        repos,
+        user,
+        body.conversation_id,
+        wc2026_context["current_match_id"],
+    )
     route_type = await _apply_provider_preflight(
         body,
         request,
@@ -125,14 +132,22 @@ async def create_chat(
     conversation_lease = None
     capacity_slot: RealtimeCapacitySlot | None = None
     try:
+        if conversation_is_existing:
+            existing_conversation = await repos.get_conversation(conversation_id)
+            if (
+                existing_conversation is not None
+                and existing_conversation.user_id != user
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="无权访问该会话",
+                )
+            await _ensure_wc2026_match_binding(
+                repos,
+                conversation_id,
+                wc2026_context["current_match_id"],
+            )
         if route_type == "realtime":
-            if body.conversation_id:
-                existing_conversation = await repos.get_conversation(body.conversation_id)
-                if existing_conversation is not None and existing_conversation.user_id != user:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="无权访问该会话",
-                    )
             runner = _get_realtime_runner(request)
             capacity_slot = runner.try_acquire_capacity()
             if capacity_slot is None:
@@ -141,7 +156,13 @@ async def create_chat(
                     detail="REALTIME_RUNNER_BUSY",
                 )
             lock = getattr(request.app.state, "conversation_lock", None) or ConversationLock()
-            lock_key = body.conversation_id or f"new:{user}:{request_hash}"
+            lock_key = (
+                conversation_id
+                if conversation_is_existing
+                else _new_wc2026_conversation_lock_key(
+                    user, wc2026_context["current_match_id"]
+                )
+            )
             conversation_lease = await lock.acquire(lock_key, run_id, ttl_s=120)
             if conversation_lease is None:
                 raise HTTPException(
@@ -149,7 +170,20 @@ async def create_chat(
                     detail="CONVERSATION_BUSY",
                 )
 
-        conversation = await repos.ensure_conversation(conversation_id, user)
+        conversation = await repos.ensure_conversation(
+            conversation_id,
+            user,
+            wc2026_match_id=wc2026_context["current_match_id"],
+        )
+        if conversation.id != conversation_id:
+            conversation_id = conversation.id
+            accepted = _accepted(
+                conversation_id,
+                run_id,
+                trace_id,
+                user_uuid=user,
+                route_type=route_type,
+            )
         await repos.add_message(
             conversation_id=conversation.id,
             role=MessageRole.USER,
@@ -159,7 +193,11 @@ async def create_chat(
             run_id,
             conversation.id,
             trace_id,
-            plan={"route_type": route_type, "metadata": body.metadata},
+            plan={
+                "route_type": route_type,
+                "metadata": body.metadata,
+                "wc2026_context": wc2026_context,
+            },
         )
         payload = _build_payload(run_id, conversation.id, trace_id, body)
         payload["user_id"] = user
@@ -302,6 +340,70 @@ def _validate_async_only(stream: bool) -> None:
         )
 
 
+def _validate_wc2026_context(body: ChatRequest) -> dict[str, Any]:
+    """Return trusted WC2026 context or reject the WC2026 chat request."""
+    context = body.wc2026_context
+    if context is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="WC2026_CONTEXT_REQUIRED",
+        )
+    current_match_id = str(context.current_match_id).strip()
+    if not current_match_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="WC2026_CONTEXT_REQUIRED",
+        )
+    if body.match_id is not None and str(body.match_id).strip() != current_match_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="WC2026_MATCH_ID_MISMATCH",
+        )
+    if str(context.current_match.id).strip() != current_match_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="WC2026_MATCH_ID_MISMATCH",
+        )
+    return context.model_dump(mode="json", exclude_none=True)
+
+
+async def _resolve_wc2026_conversation_id(
+    repos: ReposDep,
+    user_id: str,
+    requested_conversation_id: str | None,
+    current_match_id: str,
+) -> tuple[str, bool]:
+    """Resolve explicit, match-bound existing, or new conversation id."""
+    if requested_conversation_id:
+        return requested_conversation_id, True
+    getter = getattr(repos, "get_wc2026_conversation_id_by_match", None)
+    if callable(getter):
+        existing_id = await getter(user_id, current_match_id)
+        if existing_id:
+            return str(existing_id), True
+    return new_conversation_id(), False
+
+
+async def _ensure_wc2026_match_binding(
+    repos: ReposDep, conversation_id: str, current_match_id: str
+) -> None:
+    """Reject attempts to reuse a WC2026 conversation for another match."""
+    getter = getattr(repos, "get_conversation_wc2026_match_id", None)
+    if not callable(getter):
+        return
+    bound_match_id = await getter(conversation_id)
+    if bound_match_id and str(bound_match_id) != str(current_match_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="WC2026_CONVERSATION_MATCH_CONFLICT",
+        )
+
+
+def _new_wc2026_conversation_lock_key(user_id: str, current_match_id: str) -> str:
+    """Return the pre-create lock key for one user and one WC2026 match."""
+    return f"new_wc2026:{user_id}:{current_match_id}"
+
+
 def _build_payload(
     run_id: str, conversation_id: str, trace_id: str, body: ChatRequest
 ) -> dict[str, Any]:
@@ -312,6 +414,12 @@ def _build_payload(
         "trace_id": trace_id,
         "message": body.message,
         "metadata": body.metadata,
+        "match_id": body.match_id,
+        "wc2026_context": body.wc2026_context.model_dump(
+            mode="json", exclude_none=True
+        )
+        if body.wc2026_context is not None
+        else None,
     }
 
 
@@ -350,6 +458,7 @@ def _dispatch_realtime(
         trace_id=payload["trace_id"],
         message=payload["message"],
         metadata=payload.get("metadata") or {},
+        wc2026_context=payload.get("wc2026_context"),
         accepted_at=now_seconds(),
         route_type=str(payload.get("route_type") or "realtime"),
     )
