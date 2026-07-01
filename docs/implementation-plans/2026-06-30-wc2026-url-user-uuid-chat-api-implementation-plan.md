@@ -5,14 +5,14 @@
 - Specification: `docs/specifications/2026-06-30-wc2026-url-user-uuid-chat-api-specification.md` (`SPEC-WC2026-URL-USER-UUID-CHAT-API-001`)
 - Workflow Class: `HARNESS-SPEC-FIRST-FEATURE`
 - Target branch/baseline: `main`
-- Scope summary: Break the old chat-flow API contract and move World Cup chat submission, stream, run status, and conversation recovery to `/api/v1/wc2026/*` routes that use URL query `user_uuid` as the internal user id.
+- Scope summary: Break the old chat-flow API contract and move World Cup chat submission, chat-scoped stream/ws, run status, and conversation recovery to `/api/v1/wc2026/*` routes that use URL query `user_uuid` as the internal user id.
 - Out of scope: RAG/admin auth changes, DB schema changes, formal auth service, forecasting behavior changes, and legacy `/chat` compatibility.
 
 ## Change Steps
 
 1. Tests for WC2026 URL contract.
    - Files/modules: `tests/test_chat_routing.py`, `tests/test_cors.py`, `tests/test_stream_replay.py`, `tests/test_dockerhost_release_cli.py`.
-   - Behavior change: assert new route accepts URL `user_uuid`, old route is not available, returned stream/ws URLs are versioned, and release smoke commands stop sending auth headers.
+   - Behavior change: assert new route accepts URL `user_uuid`, old route is not available, returned stream/ws URLs are versioned under `/api/v1/wc2026/chat/*`, and release smoke commands stop sending auth headers.
    - Data contract impact: none.
    - Tests to add/update: focused pytest cases for chat accept, missing user_uuid, old route removal, owner mismatch, CORS preflight, and DockerHost command shape.
    - Verification command: `.venv/bin/python -m pytest tests/test_chat_routing.py tests/test_cors.py tests/test_stream_replay.py tests/test_dockerhost_release_cli.py -q`.
@@ -28,9 +28,9 @@
 
 3. Route migration.
    - Files/modules: `app/api/routers/chat.py`, `app/api/routers/stream.py`, `app/api/routers/runs.py`, `app/api/routers/conversations.py`.
-   - Behavior change: move chat-flow endpoints to `/api/v1/wc2026/*`; build returned stream/ws URLs with `user_uuid`; validate `conversation_id`, WC2026 `current_match_id`, and `Idempotency-Key` lengths before repository writes.
+   - Behavior change: move chat-flow endpoints to `/api/v1/wc2026/*`; expose SSE only at `/api/v1/wc2026/chat/stream/{agent_run_id}` and WebSocket only at `/api/v1/wc2026/chat/ws/{agent_run_id}`; build returned stream/ws URLs with `user_uuid`; validate `conversation_id`, WC2026 `current_match_id`, and `Idempotency-Key` lengths before repository writes.
    - Data contract impact: response field names unchanged; URL values change.
-   - Tests to add/update: accepted response URL assertions; old `/chat` 404; stream/runs/conversations owner checks with query identity.
+   - Tests to add/update: accepted response URL assertions; old `/chat` 404; old `/api/v1/wc2026/stream/{agent_run_id}` 404; stream/runs/conversations owner checks with query identity.
    - Verification command: `.venv/bin/python -m pytest tests/test_chat_routing.py tests/test_stream_replay.py -q`.
    - Rollback or compatibility note: no old route alias.
 
@@ -76,5 +76,5 @@
 - Focused tests pass.
 - Py_compile passes for changed Python modules/scripts.
 - Required harness gates pass or blocker is reported.
-- Old `/chat` submission route is not available.
+- Old `/chat` submission route and old `/api/v1/wc2026/stream/{agent_run_id}` route are not available.
 - DockerHost smoke and README show the URL `user_uuid` contract.

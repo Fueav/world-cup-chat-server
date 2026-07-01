@@ -583,7 +583,7 @@ def _accepted(
         agent_run_id=run_id,
         trace_id=trace_id,
         status=RunStatus.PENDING,
-        stream_url=f"{_WC2026_PREFIX}/stream/{run_id}?{user_query}",
-        ws_url=f"{_WC2026_PREFIX}/ws/{run_id}?{user_query}",
+        stream_url=f"{_WC2026_PREFIX}/chat/stream/{run_id}?{user_query}",
+        ws_url=f"{_WC2026_PREFIX}/chat/ws/{run_id}?{user_query}",
         route_type=route_type,
     )

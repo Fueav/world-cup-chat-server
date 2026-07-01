@@ -16,7 +16,7 @@
 - User/operator workflow:
   - Caller submits chat with `POST /api/v1/wc2026/chat?user_uuid=<uuid>`.
   - API returns `202 ChatAccepted` with versioned `stream_url` and `ws_url` that already include the same `user_uuid`.
-  - Caller consumes output through returned SSE/WebSocket URLs and can recover through versioned run status or conversation history URLs with the same `user_uuid`.
+  - Caller consumes output through returned chat-scoped SSE/WebSocket URLs and can recover through versioned run status or conversation history URLs with the same `user_uuid`.
 - State model:
   - The URL `user_uuid` becomes the internal `user_id` for conversations, idempotency records, rate limiting, provider preflight, task payloads, realtime runner requests, stream ownership checks, run status checks, and conversation ownership checks.
 - Ownership and identity rules:
@@ -33,14 +33,14 @@
   - Provider limiter, realtime capacity, conversation lock, stream replay, and reaper behavior remain unchanged.
 - Compatibility and migration expectations:
   - This is a breaking chat-flow API change.
-  - `POST /chat`, `/stream/{agent_run_id}`, `/ws/{agent_run_id}`, `/runs/{agent_run_id}`, and `/conversations` are not retained as the primary World Cup chat-flow integration surface.
+  - `POST /chat`, `/stream/{agent_run_id}`, `/api/v1/wc2026/stream/{agent_run_id}`, `/ws/{agent_run_id}`, `/api/v1/wc2026/ws/{agent_run_id}`, `/runs/{agent_run_id}`, and `/conversations` are not retained as the World Cup chat-flow integration surface.
 
 ## API / Interface Contract
 
 - Routes, commands, events, jobs, or UI surfaces:
   - `POST /api/v1/wc2026/chat?user_uuid=<uuid>`
-  - `GET /api/v1/wc2026/stream/{agent_run_id}?user_uuid=<uuid>`
-  - `WS /api/v1/wc2026/ws/{agent_run_id}?user_uuid=<uuid>`
+  - `GET /api/v1/wc2026/chat/stream/{agent_run_id}?user_uuid=<uuid>`
+  - `WS /api/v1/wc2026/chat/ws/{agent_run_id}?user_uuid=<uuid>`
   - `GET /api/v1/wc2026/runs/{agent_run_id}?user_uuid=<uuid>`
   - `GET /api/v1/wc2026/conversations/{conversation_id}?user_uuid=<uuid>`
   - `GET /api/v1/wc2026/conversations?user_uuid=<uuid>`
@@ -88,7 +88,7 @@
   - `app/api/middleware.py`: derive WC2026 current user from URL `user_uuid` and rate limit the versioned chat path.
   - `app/api/deps.py`: prefer request-state identity and remove header fallback for chat-flow dependency behavior.
   - `app/api/routers/chat.py`: move submission route to `/api/v1/wc2026/chat` and build versioned stream/ws URLs.
-  - `app/api/routers/stream.py`: move SSE/WS routes to `/api/v1/wc2026/stream` and `/api/v1/wc2026/ws`.
+  - `app/api/routers/stream.py`: move SSE/WS routes to `/api/v1/wc2026/chat/stream` and `/api/v1/wc2026/chat/ws`.
   - `app/api/routers/runs.py`: move run status route to `/api/v1/wc2026/runs`.
   - `app/api/routers/conversations.py`: move conversation routes to `/api/v1/wc2026/conversations`.
   - `tests/`, `scripts/dockerhost_release.py`, `scripts/benchmark_realtime_ttft.py`, `README.md`, and related specs/plans: update route and identity examples.
@@ -126,7 +126,8 @@
 
 - Functional:
   - `POST /api/v1/wc2026/chat?user_uuid=<uuid>` accepts a valid chat body without auth headers and returns `202`.
-  - Accepted response `stream_url` and `ws_url` include `/api/v1/wc2026/...` and `user_uuid=<uuid>`.
+  - Accepted response `stream_url` and `ws_url` include `/api/v1/wc2026/chat/...` and `user_uuid=<uuid>`.
+  - `GET /api/v1/wc2026/stream/{agent_run_id}?user_uuid=<uuid>` is not available.
   - Versioned stream, run status, and conversation detail/list routes authorize by URL `user_uuid`.
   - `POST /chat` no longer accepts the chat submission workflow.
 - Edge cases:

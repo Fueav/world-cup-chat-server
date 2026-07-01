@@ -1,8 +1,8 @@
 """流式网关路由:SSE 与 WebSocket。
 
-- GET /api/v1/wc2026/stream/{agent_run_id}: 用 sse-starlette 订阅 EventBus 频道 run:{id},
+- GET /api/v1/wc2026/chat/stream/{agent_run_id}: 用 sse-starlette 订阅 EventBus 频道 run:{id},
   将 AgentEvent 逐条以 SSE 推送,收到 RUN_COMPLETED/ERROR 后结束。
-- WS /api/v1/wc2026/ws/{agent_run_id}: 等价的 WebSocket 推送。
+- WS /api/v1/wc2026/chat/ws/{agent_run_id}: 等价的 WebSocket 推送。
 
 两者都从同一事件总线读取,API 层不缓存事件,断线后客户端可重连重订阅。
 WebSocket 不经 HTTP 中间件,故在握手阶段自行做轻量鉴权。
@@ -49,7 +49,7 @@ def _channel(agent_run_id: str) -> str:
     return f"run:{agent_run_id}"
 
 
-@router.get("/stream/{agent_run_id}")
+@router.get("/chat/stream/{agent_run_id}")
 async def stream_sse(
     agent_run_id: str,
     request: Request,
@@ -80,7 +80,7 @@ async def stream_sse(
     return EventSourceResponse(event_generator())
 
 
-@router.websocket("/ws/{agent_run_id}")
+@router.websocket("/chat/ws/{agent_run_id}")
 async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
     """WebSocket 端点:等价于 SSE 的事件推送。"""
     bus = getattr(websocket.app.state, "event_bus", None)

@@ -324,6 +324,7 @@ def _smoke_steps(args: argparse.Namespace) -> list[Step]:
             "message": "smoke: DockerHost async chat connectivity",
             "stream": True,
             "metadata": {"release_smoke": True},
+            "wc2026_context": _smoke_wc2026_context(),
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -432,6 +433,27 @@ def _wc2026_url(base_url: str, path: str, user_uuid: str) -> str:
     return f"{base_url}{WC2026_API_PREFIX}{path}?user_uuid={encoded_user}"
 
 
+def _smoke_wc2026_context() -> dict[str, object]:
+    return {
+        "current_match_id": "83",
+        "current_match": {
+            "id": "83",
+            "fd_match_id": "83",
+            "description": "Mexico vs Ecuador",
+            "stage": "group",
+            "stage_label": "Group",
+            "home": {"name": "Mexico", "short_name": "MEX"},
+            "away": {"name": "Ecuador", "short_name": "ECU"},
+            "is_unlocked": True,
+        },
+        "entitlements": {
+            "has_all": False,
+            "unlocked_matches": ["83"],
+            "locked_matches": [],
+        },
+    }
+
+
 def _destroy_steps(args: argparse.Namespace) -> list[Step]:
     return [
         Step("unexpose db", [args.envctl_bin, "unexpose", "--name", args.name, "--service", "db"]),
@@ -521,7 +543,7 @@ def _validate_completed_step(
         stream_url = payload.get("stream_url")
         if not isinstance(stream_url, str) or not stream_url.startswith("/"):
             return "accepted chat smoke missing stream_url"
-        if not stream_url.startswith(f"{WC2026_API_PREFIX}/stream/"):
+        if not stream_url.startswith(f"{WC2026_API_PREFIX}/chat/stream/"):
             return "accepted chat smoke returned non-WC2026 stream_url"
         if "user_uuid=" not in stream_url:
             return "accepted chat smoke stream_url missing user_uuid"

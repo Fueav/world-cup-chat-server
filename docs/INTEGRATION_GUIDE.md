@@ -316,8 +316,8 @@ curl -sS -X POST "$BASE_URL/api/v1/wc2026/chat?user_uuid=$USER_UUID" \
   "agent_run_id": "run_xxx",
   "trace_id": "trace_xxx",
   "status": "PENDING",
-  "stream_url": "/api/v1/wc2026/stream/run_xxx?user_uuid=alice.internal",
-  "ws_url": "/api/v1/wc2026/ws/run_xxx?user_uuid=alice.internal",
+  "stream_url": "/api/v1/wc2026/chat/stream/run_xxx?user_uuid=alice.internal",
+  "ws_url": "/api/v1/wc2026/chat/ws/run_xxx?user_uuid=alice.internal",
   "route_type": "realtime"
 }
 ```
@@ -333,7 +333,7 @@ curl -sS -X POST "$BASE_URL/api/v1/wc2026/chat?user_uuid=$USER_UUID" \
 拿到上一步返回的 `stream_url` 后立即订阅：
 
 ```bash
-curl -N "$BASE_URL/api/v1/wc2026/stream/run_xxx?user_uuid=$USER_UUID"
+curl -N "$BASE_URL/api/v1/wc2026/chat/stream/run_xxx?user_uuid=$USER_UUID"
 ```
 
 SSE frame 示例：
@@ -398,7 +398,7 @@ data: {"event_id":"evt_xxx","agent_run_id":"run_xxx","trace_id":"trace_xxx","typ
 如果接入方更适合 WebSocket，可以使用响应里的 `ws_url`：
 
 ```text
-ws(s)://<host>/api/v1/wc2026/ws/run_xxx?user_uuid=alice.internal
+ws(s)://<host>/api/v1/wc2026/chat/ws/run_xxx?user_uuid=alice.internal
 ```
 
 每条 WebSocket 消息是完整 `AgentEvent` JSON；处理规则和 SSE 相同：拼接
@@ -415,7 +415,7 @@ Last-Event-ID: <last_sse_id>
 WebSocket 需要从 cursor 恢复时：
 
 ```text
-ws(s)://<host>/api/v1/wc2026/ws/run_xxx?user_uuid=alice.internal&last_event_id=<stream_id>
+ws(s)://<host>/api/v1/wc2026/chat/ws/run_xxx?user_uuid=alice.internal&last_event_id=<stream_id>
 ```
 
 如果 cursor 已超过服务端保留窗口，服务端会返回：

@@ -39,8 +39,8 @@ _PUBLIC_PREFIXES = (
 )
 _OBSOLETE_CHAT_FLOW_PATHS = ("/chat", "/conversations")
 _OBSOLETE_CHAT_FLOW_PREFIXES = ("/stream/", "/ws/", "/runs/", "/conversations/")
-# 需要执行限流的路径前缀(写入/触发类)
-_RATE_LIMITED_PREFIXES = (f"{_WC2026_PREFIX}/chat",)
+# 需要执行限流的路径(写入/触发类)。SSE/WS 位于 chat 子路径,不能被限流前缀误伤。
+_RATE_LIMITED_PATHS = (f"{_WC2026_PREFIX}/chat",)
 
 
 def _extract_user_id(request: Request) -> str | None:
@@ -75,7 +75,7 @@ def _is_obsolete_chat_flow(path: str) -> bool:
 
 def _needs_rate_limit(path: str) -> bool:
     """判断路径是否需要限流。"""
-    return any(path.startswith(p) for p in _RATE_LIMITED_PREFIXES)
+    return path in _RATE_LIMITED_PATHS
 
 
 class TraceIdMiddleware(BaseHTTPMiddleware):

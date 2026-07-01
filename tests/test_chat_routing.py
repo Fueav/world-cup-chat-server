@@ -75,9 +75,9 @@ def test_accepted_response_preserves_existing_fields_and_adds_route_type():
     assert accepted.route_type == "realtime"
     assert (
         accepted.stream_url
-        == "/api/v1/wc2026/stream/run-1?user_uuid=user-url-1"
+        == "/api/v1/wc2026/chat/stream/run-1?user_uuid=user-url-1"
     )
-    assert accepted.ws_url == "/api/v1/wc2026/ws/run-1?user_uuid=user-url-1"
+    assert accepted.ws_url == "/api/v1/wc2026/chat/ws/run-1?user_uuid=user-url-1"
 
 
 def test_wc2026_context_accepts_numeric_fd_match_id_from_upstream_doc():
@@ -191,9 +191,9 @@ async def test_chat_returned_conversation_id_can_fetch_detail():
         assert resp.status_code == 202
         payload = resp.json()
         conversation_id = payload["conversation_id"]
-        assert payload["stream_url"].startswith("/api/v1/wc2026/stream/")
+        assert payload["stream_url"].startswith("/api/v1/wc2026/chat/stream/")
         assert payload["stream_url"].endswith(f"?user_uuid={user_uuid}")
-        assert payload["ws_url"].startswith("/api/v1/wc2026/ws/")
+        assert payload["ws_url"].startswith("/api/v1/wc2026/chat/ws/")
         assert payload["ws_url"].endswith(f"?user_uuid={user_uuid}")
 
         detail = await client.get(
@@ -318,8 +318,8 @@ async def test_duplicate_idempotency_claim_replays_before_conversation_lock():
                 "agent_run_id": "run-existing",
                 "trace_id": "trace-existing",
                 "status": "PENDING",
-                "stream_url": "/api/v1/wc2026/stream/run-existing?user_uuid=user-1",
-                "ws_url": "/api/v1/wc2026/ws/run-existing?user_uuid=user-1",
+                "stream_url": "/api/v1/wc2026/chat/stream/run-existing?user_uuid=user-1",
+                "ws_url": "/api/v1/wc2026/chat/ws/run-existing?user_uuid=user-1",
                 "route_type": "realtime",
             }
 

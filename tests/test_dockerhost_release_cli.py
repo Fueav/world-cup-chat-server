@@ -82,7 +82,7 @@ def test_execute_mode_runs_commands_with_real_secret_file_path_but_redacted_audi
                         "agent_run_id": "run-123",
                         "conversation_id": "conv-123",
                         "stream_url": (
-                            "/api/v1/wc2026/stream/run-123"
+                            "/api/v1/wc2026/chat/stream/run-123"
                             "?user_uuid=dockerhost-release-smoke"
                         ),
                     }
@@ -229,7 +229,7 @@ def test_execute_queries_run_status_when_sse_lacks_terminal_event():
                         "agent_run_id": "run-456",
                         "conversation_id": "conv-456",
                         "stream_url": (
-                            "/api/v1/wc2026/stream/run-456"
+                            "/api/v1/wc2026/chat/stream/run-456"
                             "?user_uuid=dockerhost-release-smoke"
                         ),
                     }
@@ -293,7 +293,7 @@ def test_execute_blocks_release_when_sse_reports_failed_terminal_event():
                         "agent_run_id": "run-failed",
                         "conversation_id": "conv-failed",
                         "stream_url": (
-                            "/api/v1/wc2026/stream/run-failed"
+                            "/api/v1/wc2026/chat/stream/run-failed"
                             "?user_uuid=dockerhost-release-smoke"
                         ),
                     }
