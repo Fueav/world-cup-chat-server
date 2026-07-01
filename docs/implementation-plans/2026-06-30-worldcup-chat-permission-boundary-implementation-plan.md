@@ -8,6 +8,7 @@
 Implement the Chat Server side of the WC2026 permission boundary:
 
 - accept trusted upstream `wc2026_context`;
+- reject locked current matches before any chat side effects;
 - bind one `conversation_id` to one `current_match_id`;
 - expose only a current-match WC2026 data tool to the Agent;
 - expose and recover `user_uuid + match_id -> conversation_id`;
@@ -18,6 +19,7 @@ Implement the Chat Server side of the WC2026 permission boundary:
 
 - Persist WC2026 conversation binding in the `conversation` table and keep run-plan binding only as a legacy fallback/audit copy.
 - Do not expose a generic `get_match_context(match_id)` tool.
+- Treat `wc2026_context.current_match.is_unlocked` as the authoritative chat entry permission.
 - Do not hard-code central API keys.
 - Do not persist raw full paid payloads in `ToolCallLog`.
 - Preserve existing `ChatAccepted` response shape and route selection behavior.
@@ -28,13 +30,14 @@ Implement the Chat Server side of the WC2026 permission boundary:
 1. Add focused RED tests.
    - `tests/test_wc2026_permissions.py`: unlock semantics and paid block masking.
    - `tests/test_wc2026_agent_data.py`: current-match-only central data adapter, locked no-call behavior, central API error fallback.
-   - `tests/test_chat_routing.py`: request context preservation, idempotency hash, run plan context, conversation match conflict.
+   - `tests/test_chat_routing.py`: request context preservation, locked-match entry rejection before side effects, idempotency hash, run plan context, conversation match conflict.
    - `tests/test_conversations_match_index.py` or conversation route tests: persisted `wc2026_match_id`, indexed `match_id` filtering, and chat auto-reuse by same user/match.
    - `tests/test_agent_factory.py` / orchestrator coverage: WC2026 tool registration and context injection.
 
 2. Add request/context contracts.
    - Extend `ChatRequest` with optional `match_id` and `wc2026_context`.
    - Keep route-level validation strict: WC2026 chat rejects missing `wc2026_context.current_match_id`.
+   - Reject `wc2026_context.current_match.is_unlocked=false` with 403 `WC2026_MATCH_LOCKED` before idempotency, conversation lookup, provider preflight, capacity reservation, run creation, or task enqueue.
    - Include `wc2026_context` in idempotency hashing.
 
 3. Enforce API-side conversation binding.
@@ -53,7 +56,7 @@ Implement the Chat Server side of the WC2026 permission boundary:
    - Keep filtering scoped to URL-derived `user_uuid`.
 
 5. Implement permission and masking helpers.
-   - Calculate unlock from `current_match.is_unlocked` or `entitlements.has_all`.
+   - Calculate unlock from `current_match.is_unlocked`; `entitlements.has_all` does not override a locked current match.
    - Keep public methodology/dimension labels/explanations/weights.
    - Mask match-specific paid values for Block B, Block D, and 9D scores.
    - Keep the defensive Block D mask aligned with central contract fields, including `polymarket_implied_probability`, `probability_gap_pp`, `decimal_odds`, and `expected_value`.
@@ -62,7 +65,7 @@ Implement the Chat Server side of the WC2026 permission boundary:
    - Add settings for central base URL, optional API key, and timeout.
    - Accept either origin-style base URLs such as `http://viki-api:8080` or API-base URLs such as `http://viki-api:8080/api/v1`.
    - Send `wc-api-key` only when `WC2026_AGENT_API_KEY` is configured.
-   - Locked current match returns a structured locked result without calling `match-context`.
+   - Locked current match remains fail-closed and returns a structured locked result without calling `match-context` if the service is invoked directly; normal chat requests are rejected earlier.
    - Unlocked current match calls only `/agent/match-context/{current_match_id}`.
    - Add central methodology fetch for public method questions.
    - Central API failures return structured errors, never fabricate numbers, and never expose raw transport exception strings to the Agent.

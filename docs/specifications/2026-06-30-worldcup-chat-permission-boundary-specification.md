@@ -26,13 +26,15 @@
   - Frontend calls moss-api.
   - moss-api validates the user, drops any frontend-provided `wc2026_context`, and injects trusted `wc2026_context`.
   - Chat Server accepts the request only when `wc2026_context.current_match_id` is present.
+  - Chat Server rejects the request before side effects when `wc2026_context.current_match.is_unlocked=false`; locked matches cannot start chat runs.
   - A conversation is bound to its first `current_match_id`; later requests on the same `conversation_id` with another match are rejected.
   - When a chat request omits `conversation_id`, Chat Server first looks for an existing conversation owned by the same `user_uuid` and bound to `wc2026_context.current_match_id`; if found, it reuses that conversation instead of creating a duplicate.
   - Frontend can recover the same mapping through the conversations API: `user_uuid + match_id -> conversation_id`.
   - Agent tools only query the current match from trusted context, never a match id inferred from user text.
 - State model:
-  - `current_match.is_unlocked=true` means Block B model probability, Block D recommendation, and Power Index 9D numeric values are all unlocked for the current match.
-  - `entitlements.has_all=true` also unlocks all three current-match paid blocks.
+  - `current_match.is_unlocked=true` is the authoritative chat-service unlock signal for the current match.
+  - `current_match.is_unlocked=false` means the current match is locked for this user and Chat Server must not provide chat service for that match.
+  - `entitlements.has_all` no longer overrides `current_match.is_unlocked` at the Chat Server entrypoint.
   - Methodology remains public in product terms and is fetched through the central methodology endpoint.
   - If a central environment requires service API key authentication, Chat Server sends `wc-api-key` when `WC2026_AGENT_API_KEY` is configured; if not configured, it attempts no-key direct access and lets the central service fail closed if that environment requires a key.
   - Central recommendation `market_side` is limited to 1X2 and exact-score best-edge markets: `home_win`, `away_win`, `draw`, `score_0_0` through `score_3_3`, and `score_any_other`.
@@ -47,8 +49,9 @@
   - Raw full paid payload must not enter LLM context or persistent tool logs.
 - Empty, error, retry, timeout, duplicate, and partial-failure behavior:
   - Missing `wc2026_context` or `current_match_id` is rejected for WC2026 chat.
+  - `current_match.is_unlocked=false` is rejected before idempotency claim, conversation lookup/creation, provider preflight, runner capacity reservation, task enqueue, or Agent execution.
   - Same conversation with a different current match is rejected with a conflict.
-  - Unlocked=false should not call paid `match-context`; methodology/public explanation remains allowed.
+  - Locked users cannot enter chat for the match; paid `match-context`, methodology, and public explanation are not reached through the chat flow.
   - Central API errors produce structured tool errors, not fabricated values.
 - Compatibility and migration expectations:
   - Existing non-WC2026 tests should continue to pass.
@@ -72,6 +75,7 @@
   - `GET /api/v1/wc2026/conversations?match_id=<id>` returns only conversations for the current `user_uuid` whose persisted `conversation.wc2026_match_id` matches that `match_id`, with run-plan binding used only as a legacy fallback.
 - Status/error codes:
   - Missing or malformed `wc2026_context`: 422.
+  - `current_match.is_unlocked=false`: 403 `WC2026_MATCH_LOCKED`.
   - Existing conversation bound to another match: 409 `WC2026_CONVERSATION_MATCH_CONFLICT`.
 - Backward compatibility:
   - This is a WC2026-specific route; clients must send upstream-injected context.
@@ -109,10 +113,11 @@
   - `app/runtime/deps.py`, `app/runtime/adapters.py`, `app/runtime/agent_factory.py`: inject context-aware WC2026 tool path.
   - Focused tests for schema, API routing, masking, adapter, and agent tool exposure.
 - Data flow:
-  - Chat request -> trusted `wc2026_context` -> DB conversation binding check -> run metadata -> runtime deps -> current-match-only WC2026 tool -> central data client -> masked tool result -> LLM.
+  - Chat request -> trusted `wc2026_context` -> unlock gate -> DB conversation binding check -> run metadata -> runtime deps -> current-match-only WC2026 tool -> central data client -> masked tool result -> LLM.
   - Methodology question -> central methodology tool -> public method payload -> LLM.
   - Conversation recovery -> `user_uuid` and optional `match_id` -> indexed conversation lookup -> frontend receives `conversation_id` and `wc2026_match_id`.
 - Transaction/concurrency boundaries:
+  - Unlock is checked before any repository, idempotency, provider, queue, or runner side effect.
   - Binding is checked before run creation.
   - Locking uses the existing conversation lock for active run exclusivity and a pre-create `user_uuid + current_match_id` lock for realtime requests before the conversation row exists.
 - Observability/logging/metrics:
@@ -150,6 +155,7 @@
 
 - Functional:
   - `ChatRequest` preserves and validates server-injected `wc2026_context`.
+  - WC2026 chat rejects `current_match.is_unlocked=false` with 403 `WC2026_MATCH_LOCKED` before creating or reusing a conversation.
   - Idempotency hash includes `wc2026_context`.
   - Same conversation cannot switch `current_match_id`.
   - Conversation-match binding is persisted on `conversation.wc2026_match_id` for new WC2026 conversations.
@@ -159,14 +165,14 @@
   - Conversation list supports `match_id` filtering scoped to the current `user_uuid`.
   - Agent-facing WC2026 match-context tool accepts no arbitrary match id and always uses the current context match id.
   - Agent-facing WC2026 methodology tool accepts no match id and fetches the central methodology endpoint.
-  - Locked current match does not call paid `match-context`.
+  - Locked current match does not create a run and cannot call paid `match-context`.
   - Unlocked current match may call paid `match-context`.
   - Full central payload is masked before returning to the LLM or tool logs.
   - Locked recommendation masking covers central contract fields including `polymarket_implied_probability`, `probability_gap_pp`, `decimal_odds`, and `expected_value`.
   - Power Index 9D numeric scores are masked when locked; dimensions/labels/weights remain public.
 - Edge cases:
-  - `entitlements.has_all=true` unlocks paid blocks.
-  - `current_match.is_unlocked=true` unlocks all paid blocks for the current match.
+  - `entitlements.has_all=true` does not override `current_match.is_unlocked=false`.
+  - `current_match.is_unlocked=true` unlocks chat service and all paid blocks for the current match.
   - Missing or malformed context is rejected.
   - Central API unavailable produces no fabricated match numbers.
   - Central API transport failures return fixed `WC2026_AGENT_DATA_UNAVAILABLE` tool messages instead of raw exception strings.

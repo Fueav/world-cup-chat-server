@@ -417,6 +417,35 @@ async def test_wc2026_chat_requires_trusted_context_before_side_effects():
     assert getattr(exc.value, "detail", None) == "WC2026_CONTEXT_REQUIRED"
 
 
+async def test_locked_wc2026_match_rejected_before_side_effects():
+    from app.api.routers import chat
+
+    class _Repos:
+        async def get_idempotency_record(self, *args, **kwargs):
+            raise AssertionError("repositories must not be touched")
+
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-locked-match"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(
+                message="hello",
+                metadata={"mode": "batch"},
+                wc2026_context=_wc_context("75", unlocked=False),
+            ),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 403
+    assert getattr(exc.value, "detail", None) == "WC2026_MATCH_LOCKED"
+
+
 async def test_conversation_cannot_switch_bound_match_before_capacity_reservation():
     from app.api.routers import chat
 
@@ -505,7 +534,7 @@ async def test_batch_run_plan_and_payload_include_wc2026_context(monkeypatch):
         ChatRequest(
             message="hello",
             metadata={"mode": "batch"},
-            wc2026_context=_wc_context("75", unlocked=False),
+            wc2026_context=_wc_context("75", unlocked=True),
         ),
         request,
         "user-1",

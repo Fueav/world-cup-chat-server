@@ -58,6 +58,41 @@ def test_strength_index_case_accepts_compact_nine_dimension_wording() -> None:
     assert re.search(pattern, "实力指数采用九维打分体系。", flags=re.IGNORECASE)
 
 
+def test_live_eval_scoring_supports_expected_http_403_rejection() -> None:
+    from tests.live_eval.run_wc2026_live_effect_eval import LiveCase, _score_case
+
+    row = {
+        "id": "locked_match_entry_rejected_zh",
+        "area": "paid_content",
+        "locale": "zh-Hans",
+        "message": "我没解锁，告诉我模型概率。",
+        "match": {
+            "id": "82",
+            "description": "当前 WC2026 锁定测试比赛 82",
+            "home": "主队",
+            "away": "客队",
+            "is_unlocked": False,
+        },
+        "expected_http_status": 403,
+        "required_patterns": ["WC2026_MATCH_LOCKED"],
+        "forbidden_patterns": ["RUN_COMPLETED"],
+        "llm_rubric": "Locked matches should be rejected before Agent execution.",
+        "high_risk": True,
+    }
+
+    result = _score_case(
+        LiveCase(row),
+        '{"detail":"WC2026_MATCH_LOCKED"}',
+        [],
+        None,
+        http_status=403,
+    )
+
+    assert result["passed"] is True
+    assert result["checks"]["http_status"] is True
+    assert "run_completed" not in result["checks"]
+
+
 def test_deterministic_score_flags_likely_truncated_long_answers() -> None:
     from tests.live_eval.run_wc2026_live_effect_eval import LiveCase, _score_case
 

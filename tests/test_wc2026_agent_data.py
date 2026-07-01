@@ -218,7 +218,7 @@ async def test_missing_current_match_context_fails_closed():
 
 
 @pytest.mark.anyio
-async def test_unlocked_has_all_uses_current_match_id_not_entitlement_lists():
+async def test_has_all_does_not_override_locked_current_match():
     from app.runtime.wc2026_agent_data import Wc2026AgentDataService
 
     context = _wc_context("75", unlocked=False)
@@ -232,8 +232,9 @@ async def test_unlocked_has_all_uses_current_match_id_not_entitlement_lists():
 
     result = await service.get_current_match_context(context)
 
-    assert client.calls == [("75", "zh-Hans")]
+    assert client.calls == []
     assert result["ok"] is True
+    assert result["status"] == "locked"
 
 
 async def test_methodology_calls_central_public_endpoint():

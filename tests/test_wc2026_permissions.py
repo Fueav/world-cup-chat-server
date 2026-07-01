@@ -81,11 +81,11 @@ def _central_payload(match_id: str = "75"):
     }
 
 
-def test_current_match_unlock_uses_match_flag_or_has_all():
+def test_current_match_unlock_uses_match_flag_as_authority():
     from app.runtime.wc2026_permissions import is_current_match_unlocked
 
     assert is_current_match_unlocked(_wc_context(unlocked=True)) is True
-    assert is_current_match_unlocked(_wc_context(has_all=True)) is True
+    assert is_current_match_unlocked(_wc_context(has_all=True)) is False
     assert is_current_match_unlocked(_wc_context(unlocked=False, has_all=False)) is False
 
 

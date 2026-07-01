@@ -43,6 +43,7 @@ from app.runtime.runner import (
     RealtimeRunner,
     now_seconds,
 )
+from app.runtime.wc2026_permissions import is_current_match_unlocked
 
 logger = get_logger(__name__)
 
@@ -78,6 +79,7 @@ async def create_chat(
     _validate_message(body.message)
     _validate_async_only(body.stream)
     wc2026_context = _validate_wc2026_context(body)
+    _validate_wc2026_match_unlocked(wc2026_context)
     settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
     run_id = new_run_id()
@@ -378,6 +380,15 @@ def _validate_wc2026_context(body: ChatRequest) -> dict[str, Any]:
             detail="WC2026_MATCH_ID_MISMATCH",
         )
     return context.model_dump(mode="json", exclude_none=True)
+
+
+def _validate_wc2026_match_unlocked(wc2026_context: dict[str, Any]) -> None:
+    """Reject locked current matches before chat side effects."""
+    if not is_current_match_unlocked(wc2026_context):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="WC2026_MATCH_LOCKED",
+        )
 
 
 def _validate_idempotency_key(idempotency_key: str | None) -> None:

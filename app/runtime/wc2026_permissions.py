@@ -40,10 +40,7 @@ def is_current_match_unlocked(wc2026_context: Any) -> bool:
     """Return whether all current-match paid blocks are unlocked."""
     context = _as_mapping(wc2026_context)
     current_match = _as_mapping(context.get("current_match"))
-    entitlements = _as_mapping(context.get("entitlements"))
-    return bool(current_match.get("is_unlocked")) or bool(
-        entitlements.get("has_all")
-    )
+    return bool(current_match.get("is_unlocked"))
 
 
 def mask_match_context_payload(payload: Mapping[str, Any], wc2026_context: Any) -> dict:

@@ -208,8 +208,15 @@ async def run_case(
     result["submit_latency_ms"] = round((time.perf_counter() - submit_started) * 1000, 1)
     result["accepted"] = _safe_json(response)
     if response.status_code != 202:
-        result["response_text"] = response.text[:1000]
-        result["deterministic"] = _score_case(case, "", [], None, http_status=response.status_code)
+        response_text = response.text[:1000]
+        result["response_text"] = response_text
+        result["deterministic"] = _score_case(
+            case,
+            response_text,
+            [],
+            None,
+            http_status=response.status_code,
+        )
         return result
 
     accepted = result["accepted"]
@@ -462,6 +469,7 @@ def _score_case(
     forbidden_patterns = [str(item) for item in case.raw.get("forbidden_patterns", [])]
     required_tools = [str(item) for item in case.raw.get("required_tools", [])]
     forbidden_tools = [str(item) for item in case.raw.get("forbidden_tools", [])]
+    expected_http_status = int(case.raw.get("expected_http_status") or 202)
     evidence = tool_evidence(events)
     terminal_type = terminal_event.get("type") if isinstance(terminal_event, dict) else None
     terminal_status = None
@@ -485,16 +493,21 @@ def _score_case(
     }
     max_answer_chars = int(case.raw.get("max_answer_chars") or DEFAULT_MAX_ANSWER_CHARS)
     checks = {
-        "http_202": http_status == 202,
-        "run_completed": terminal_type == "RUN_COMPLETED" and terminal_status == "SUCCEEDED",
-        "not_truncated": not is_likely_truncated_answer(answer),
-        "concise_length": len(answer) <= max_answer_chars,
-        "no_markdown_table": MARKDOWN_TABLE_RE.search(answer) is None,
+        "http_status": http_status == expected_http_status,
         "required_patterns": all(required_hits.values()) if required_hits else True,
         "forbidden_patterns": not any(forbidden_hits.values()) if forbidden_hits else True,
         "required_tools": all(required_tool_hits.values()) if required_tool_hits else True,
         "forbidden_tools": not any(forbidden_tool_hits.values()) if forbidden_tool_hits else True,
     }
+    if expected_http_status == 202:
+        checks.update(
+            {
+                "run_completed": terminal_type == "RUN_COMPLETED" and terminal_status == "SUCCEEDED",
+                "not_truncated": not is_likely_truncated_answer(answer),
+                "concise_length": len(answer) <= max_answer_chars,
+                "no_markdown_table": MARKDOWN_TABLE_RE.search(answer) is None,
+            }
+        )
     return {
         "passed": all(checks.values()),
         "checks": checks,

@@ -297,14 +297,17 @@ curl -sS -X POST "$BASE_URL/api/v1/wc2026/chat?user_uuid=$USER_UUID" \
 会使用这个上下文完成这些事：
 
 - `conversation_id` 和 `current_match_id` 一一绑定。
-- 当前比赛未解锁时，不调用中心化 paid `match-context` 接口。
+- 当前比赛未解锁时，chat-flow 直接返回 `403 WC2026_MATCH_LOCKED`，不会创建或复用
+  conversation，不会创建 run，也不会调用 Agent 或中心化接口。
 - 当前比赛已解锁时，Block B 概率、Block D 推荐、9D 数值一起解锁。
 - 如果未来启用中心化 locked payload，Chat Server 仍会对 Block D 推荐字段做防御性掩码，
   覆盖 `polymarket_implied_probability`、`probability_gap_pp`、`decimal_odds`、
   `expected_value` 等付费字段。
-- 模型方法论问题走中心化 methodology 接口，不依赖用户是否解锁当前比赛。
+- 模型方法论问题走中心化 methodology 接口，但仍必须先满足当前比赛已解锁的 chat-flow
+  入口权限。
 
-如果缺少 `wc2026_context`，返回 `422 WC2026_CONTEXT_REQUIRED`。如果请求体里的
+如果缺少 `wc2026_context`，返回 `422 WC2026_CONTEXT_REQUIRED`。如果当前比赛
+`is_unlocked=false`，返回 `403 WC2026_MATCH_LOCKED`。如果请求体里的
 `match_id` 和 `wc2026_context.current_match_id` 不一致，返回
 `422 WC2026_MATCH_ID_MISMATCH`。
 
@@ -844,7 +847,7 @@ HTTP 状态：
 | 状态码 | 含义 |
 | --- | --- |
 | `401` | WC2026 chat-flow 缺少 URL `user_uuid`，或内部接口缺少身份 header。 |
-| `403` | 当前用户无权访问该资源。 |
+| `403` | 当前用户无权访问该资源，或当前比赛未解锁。 |
 | `404` | run、conversation、knowledge base、document 或 job 不存在。 |
 | `409` | conversation busy、同一 conversation 切换比赛、知识库不可用、幂等冲突。 |
 | `422` | 请求体不合法，常见为空 message / content / query、缺少 `wc2026_context`、`match_id` 不一致，或 `stream=false`。 |
@@ -856,6 +859,7 @@ HTTP 状态：
 - `CONVERSATION_BUSY`
 - `IDEMPOTENCY_CONFLICT`
 - `WC2026_CONTEXT_REQUIRED`
+- `WC2026_MATCH_LOCKED`
 - `WC2026_MATCH_ID_MISMATCH`
 - `WC2026_CONVERSATION_MATCH_CONFLICT`
 - `PROVIDER_LIMITER_UNAVAILABLE`
