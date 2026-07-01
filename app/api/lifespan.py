@@ -103,6 +103,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.provider_limiter = provider_limiter
     app.state.rate_limiter = RateLimiter(redis, settings.rate_limit_per_min)
     app.state.conversation_lock = ConversationLock(redis_client=redis)
+    app.state.stream_connection_lock = None
+    app.state.stream_connection_counts = {}
     app.state.realtime_runner = _build_realtime_runner(
         redis, event_bus, settings, provider_limiter, secret_provider, metrics
     )

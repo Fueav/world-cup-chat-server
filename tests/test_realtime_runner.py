@@ -112,6 +112,64 @@ async def test_realtime_runner_failure_releases_leases_and_returns_failed():
     assert conversation_lease.released is True
 
 
+async def test_realtime_runner_pre_run_failure_emits_terminal_event(monkeypatch):
+    from app.core.enums import RunStatus
+    from app.core.events import EventType
+    from app.runtime.runner import RealtimeRunRequest, RealtimeRunner
+    from app.tasks import run_store
+
+    failed_runs: list[tuple[str, str]] = []
+
+    async def _mark_failed(run_id: str, error: str) -> None:
+        failed_runs.append((run_id, error))
+
+    class _EventBus:
+        def __init__(self) -> None:
+            self.events = []
+
+        async def publish(self, channel, event):
+            self.events.append((channel, event))
+            return event
+
+    def _factory():
+        raise RuntimeError("build deps failed")
+
+    monkeypatch.setattr(run_store, "mark_run_failed", _mark_failed)
+    event_bus = _EventBus()
+    run_lease = FakeRunLease()
+    conversation_lease = FakeLockLease("conv-1")
+    runner = RealtimeRunner(
+        orchestrator_factory=_factory,
+        run_lease=run_lease,
+        runner_id="runner-test",
+        heartbeat_interval_s=0,
+        event_bus=event_bus,
+    )
+
+    result = await runner.run_chat(
+        RealtimeRunRequest(
+            agent_run_id="run-pre-fail",
+            conversation_id="conv-1",
+            user_id="user-1",
+            trace_id="trace-1",
+            message="hello",
+            metadata={},
+            accepted_at=0.0,
+        ),
+        conversation_lease=conversation_lease,
+    )
+
+    assert result.status is RunStatus.FAILED
+    assert failed_runs == [("run-pre-fail", "REALTIME_RUNNER_FAILED")]
+    assert [event.type for _, event in event_bus.events] == [
+        EventType.ERROR,
+        EventType.RUN_COMPLETED,
+    ]
+    assert event_bus.events[-1][1].data["status"] == RunStatus.FAILED.value
+    assert await run_lease.is_alive("run-pre-fail") is False
+    assert conversation_lease.released is True
+
+
 async def test_realtime_runner_timeout_releases_leases_and_returns_failed(monkeypatch):
     from app.core.enums import RunStatus
     from app.core.events import EventType
@@ -171,6 +229,8 @@ async def test_realtime_runner_timeout_releases_leases_and_returns_failed(monkey
     assert event_bus.events[0][0] == "run:run-timeout"
     assert event_bus.events[0][1].type is EventType.ERROR
     assert event_bus.events[0][1].data["error"] == "RUN_TIMEOUT"
+    assert event_bus.events[1][1].type is EventType.RUN_COMPLETED
+    assert event_bus.events[1][1].data["status"] == RunStatus.FAILED.value
     assert await run_lease.is_alive("run-timeout") is False
     assert conversation_lease.released is True
     assert metrics.counters["runner_timeouts_total"]

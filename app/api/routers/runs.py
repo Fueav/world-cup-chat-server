@@ -27,7 +27,7 @@ async def get_run_status(agent_run_id: str, user: CurrentUser, repos: ReposDep) 
             status_code=status.HTTP_404_NOT_FOUND, detail="运行记录不存在"
         )
     conversation = await repos.get_conversation(run.conversation_id)
-    if conversation is not None and conversation.user_id is not None and conversation.user_id != user:
+    if conversation is None or conversation.user_id != user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="无权访问该运行"
         )

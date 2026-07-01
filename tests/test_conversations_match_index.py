@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
+
 
 def _conversation(conversation_id: str, *, user_id: str = "user-1"):
     now = datetime.now(UTC)
@@ -59,3 +62,16 @@ async def test_get_conversation_detail_includes_wc2026_match_id():
     assert detail.id == "conv-75"
     assert detail.wc2026_match_id == "75"
     assert detail.messages == []
+
+
+async def test_get_conversation_rejects_null_owner():
+    from app.api.routers.conversations import get_conversation
+
+    class _Repos:
+        async def get_conversation_with_messages(self, conversation_id):
+            return _conversation("conv-null-owner", user_id=None)
+
+    with pytest.raises(HTTPException) as exc:
+        await get_conversation("conv-null-owner", "user-1", _Repos())
+
+    assert exc.value.status_code == 403

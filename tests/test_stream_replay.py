@@ -75,6 +75,49 @@ async def test_stream_owner_mismatch_raises_403():
     assert exc.value.status_code == 403
 
 
+async def test_stream_owner_null_raises_403():
+    from app.api.routers.stream import _assert_run_owner
+
+    class _Run:
+        conversation_id = "conv-1"
+
+    class _Conversation:
+        user_id = None
+
+    class _Repos:
+        async def get_run(self, run_id):
+            return _Run()
+
+        async def get_conversation(self, conversation_id):
+            return _Conversation()
+
+    with pytest.raises(HTTPException) as exc:
+        await _assert_run_owner("run-1", "owner-1", _Repos())
+
+    assert exc.value.status_code == 403
+
+
+async def test_stream_connection_limit_releases_after_close(monkeypatch):
+    from app.api.routers import stream
+    from app.core.config import Settings
+
+    state = SimpleNamespace()
+    monkeypatch.setattr(
+        stream,
+        "get_settings",
+        lambda: Settings(_env_file=None, stream_max_connections_per_run=1),
+    )
+
+    lease = await stream._acquire_stream_connection(state, "run-1")
+    with pytest.raises(HTTPException) as exc:
+        await stream._acquire_stream_connection(state, "run-1")
+    await lease.release()
+    next_lease = await stream._acquire_stream_connection(state, "run-1")
+    await next_lease.release()
+
+    assert exc.value.status_code == 429
+
+
 async def test_wc2026_chat_stream_route_is_only_sse_route():
     from app.api import deps
     from app.api.main import create_app
@@ -130,6 +173,7 @@ async def test_wc2026_chat_stream_uses_short_sse_ping_interval():
 
     class _Request:
         headers = {}
+        app = SimpleNamespace(state=SimpleNamespace())
 
         async def is_disconnected(self):
             return False

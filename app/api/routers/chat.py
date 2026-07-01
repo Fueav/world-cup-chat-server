@@ -13,6 +13,7 @@ API 层无状态:不在内存保存会话,全部经 DB/Redis。
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 from typing import Any
@@ -34,7 +35,7 @@ from app.core.schemas import ChatAccepted, ChatRequest
 from app.runtime.locks import ConversationLock
 from app.runtime.provider_limits import (
     ProviderLimitRequest,
-    estimate_input_tokens,
+    estimate_structured_input_tokens,
     provider_identity_from_settings,
 )
 from app.runtime.runner import (
@@ -79,6 +80,7 @@ async def create_chat(
     _validate_message(body.message)
     _validate_async_only(body.stream)
     wc2026_context = _validate_wc2026_context(body)
+    _validate_request_size(body, wc2026_context)
     _validate_wc2026_match_unlocked(wc2026_context)
     settings = get_settings()
     trace_id = getattr(request.state, "trace_id", None) or new_trace_id()
@@ -168,7 +170,11 @@ async def create_chat(
                     user, wc2026_context["current_match_id"]
                 )
             )
-            conversation_lease = await lock.acquire(lock_key, run_id, ttl_s=120)
+            conversation_lease = await lock.acquire(
+                lock_key,
+                run_id,
+                ttl_s=_conversation_lock_ttl_s(settings),
+            )
             if conversation_lease is None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -286,7 +292,13 @@ async def _apply_provider_preflight(
     req = ProviderLimitRequest(
         provider=identity.provider,
         model=identity.model,
-        estimated_input_tokens=estimate_input_tokens(body.message),
+        estimated_input_tokens=estimate_structured_input_tokens(
+            body.message,
+            body.metadata or {},
+            body.wc2026_context.model_dump(mode="json", exclude_none=True)
+            if body.wc2026_context is not None
+            else {},
+        ),
         max_output_tokens=settings.provider_default_max_output_tokens,
         route_type="realtime",
         user_id=user_id,
@@ -334,6 +346,12 @@ def _validate_message(message: str) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="message 不能为空",
         )
+    settings = get_settings()
+    if len(message) > settings.chat_message_max_chars:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="MESSAGE_TOO_LARGE",
+        )
 
 
 def _validate_async_only(stream: bool) -> None:
@@ -380,6 +398,45 @@ def _validate_wc2026_context(body: ChatRequest) -> dict[str, Any]:
             detail="WC2026_MATCH_ID_MISMATCH",
         )
     return context.model_dump(mode="json", exclude_none=True)
+
+
+def _validate_request_size(
+    body: ChatRequest, wc2026_context: dict[str, Any]
+) -> None:
+    """Reject oversized structured inputs before DB, locks, or provider checks."""
+    settings = get_settings()
+    metadata_size = _json_size_bytes(body.metadata or {})
+    if metadata_size > settings.chat_metadata_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="METADATA_TOO_LARGE",
+        )
+    context_size = _json_size_bytes(wc2026_context)
+    if context_size > settings.chat_wc2026_context_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="WC2026_CONTEXT_TOO_LARGE",
+        )
+    total_size = _json_size_bytes(
+        {
+            "message": body.message,
+            "metadata": body.metadata or {},
+            "wc2026_context": wc2026_context,
+        }
+    )
+    if total_size > settings.chat_request_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="CHAT_REQUEST_TOO_LARGE",
+        )
+
+
+def _json_size_bytes(value: Any) -> int:
+    try:
+        payload = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        payload = str(value)
+    return len(payload.encode("utf-8"))
 
 
 def _validate_wc2026_match_unlocked(wc2026_context: dict[str, Any]) -> None:
@@ -437,6 +494,12 @@ async def _ensure_wc2026_match_binding(
 def _new_wc2026_conversation_lock_key(user_id: str, current_match_id: str) -> str:
     """Return the pre-create lock key for one user and one WC2026 match."""
     return f"new_wc2026:{user_id}:{current_match_id}"
+
+
+def _conversation_lock_ttl_s(settings: Any) -> int:
+    configured = int(getattr(settings, "conversation_lock_ttl_s", 330) or 0)
+    runtime = int(math.ceil(float(getattr(settings, "run_max_runtime_s", 300) or 0)))
+    return max(configured, runtime + 30, 120)
 
 
 def _build_payload(

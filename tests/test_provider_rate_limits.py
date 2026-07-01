@@ -10,6 +10,7 @@ from app.runtime.provider_limits import (
     ProviderLimitRequest,
     ProviderRateLimitError,
     ProviderUsageSettlement,
+    estimate_structured_input_tokens,
     provider_identity_from_settings,
 )
 
@@ -98,6 +99,42 @@ async def test_provider_usage_settlement_does_not_refund_over_reserved_tokens():
 
     assert settlement.debit_tokens == 0
     assert denied.allowed is False
+
+
+async def test_provider_usage_missing_keeps_reserved_tokens_settled():
+    limiter = InMemoryProviderRateLimiter(
+        default_config=ProviderLimitConfig(rpm=100, tpm=100),
+        now_ms=lambda: 0,
+    )
+    decision = await limiter.acquire(_request(tokens=80))
+
+    settlement = await limiter.settle_usage(
+        ProviderUsageSettlement(
+            provider="openai",
+            model="gpt-test",
+            reserved_tokens=decision.reserved_tokens,
+            actual_input_tokens=None,
+            actual_output_tokens=None,
+            route_type="realtime",
+        )
+    )
+    denied = await limiter.acquire(_request(tokens=30))
+
+    assert settlement.settled is True
+    assert settlement.usage_missing is True
+    assert settlement.debit_tokens == 0
+    assert denied.allowed is False
+
+
+def test_structured_input_token_estimate_counts_context_not_only_message():
+    message_only = estimate_structured_input_tokens("hi")
+    with_context = estimate_structured_input_tokens(
+        "hi",
+        {"metadata": "m" * 300},
+        {"wc2026_context": "c" * 300},
+    )
+
+    assert with_context > message_only + 100
 
 
 async def test_realtime_accepted_gate_waits_once_when_retry_after_within_budget(monkeypatch):

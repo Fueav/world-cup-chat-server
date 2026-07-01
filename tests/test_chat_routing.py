@@ -275,6 +275,96 @@ async def test_wc2026_chat_rejects_overlong_idempotency_key_before_db_claim():
     assert getattr(exc.value, "detail", None) == "IDEMPOTENCY_KEY_TOO_LONG"
 
 
+async def test_wc2026_chat_rejects_oversized_message_before_side_effects():
+    from app.api.routers import chat
+    from app.core.config import Settings
+
+    class _Repos:
+        async def get_idempotency_record(self, *args, **kwargs):
+            raise AssertionError("repositories must not be touched")
+
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-oversized-message"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(
+                message="x" * (Settings(_env_file=None).chat_message_max_chars + 1),
+                metadata={"mode": "realtime"},
+                wc2026_context=_wc_context(),
+            ),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 422
+    assert getattr(exc.value, "detail", None) == "MESSAGE_TOO_LARGE"
+
+
+async def test_wc2026_chat_rejects_oversized_metadata_before_side_effects():
+    from app.api.routers import chat
+
+    class _Repos:
+        async def get_idempotency_record(self, *args, **kwargs):
+            raise AssertionError("repositories must not be touched")
+
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-oversized-metadata"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(
+                message="hello",
+                metadata={"blob": "x" * 9000},
+                wc2026_context=_wc_context(),
+            ),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 422
+    assert getattr(exc.value, "detail", None) == "METADATA_TOO_LARGE"
+
+
+async def test_wc2026_chat_rejects_oversized_context_before_side_effects():
+    from app.api.routers import chat
+
+    class _Repos:
+        async def get_idempotency_record(self, *args, **kwargs):
+            raise AssertionError("repositories must not be touched")
+
+    context = _wc_context()
+    context["large_context_blob"] = "x" * 33000
+    request = SimpleNamespace(
+        headers={},
+        state=SimpleNamespace(trace_id="trace-oversized-context"),
+        app=SimpleNamespace(state=SimpleNamespace()),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await chat.create_chat(
+            ChatRequest(
+                message="hello",
+                metadata={"mode": "realtime"},
+                wc2026_context=context,
+            ),
+            request,
+            "user-1",
+            _Repos(),
+        )
+
+    assert getattr(exc.value, "status_code", None) == 422
+    assert getattr(exc.value, "detail", None) == "WC2026_CONTEXT_TOO_LARGE"
+
+
 async def test_legacy_chat_route_is_not_available():
     from app.api.main import create_app
 
@@ -658,9 +748,11 @@ async def test_new_realtime_wc2026_chat_locks_by_user_and_match(monkeypatch):
     class _Lock:
         def __init__(self) -> None:
             self.keys = []
+            self.acquired_ttls = []
 
         async def acquire(self, key, *args, **kwargs):
             self.keys.append(key)
+            self.acquired_ttls.append(kwargs["ttl_s"])
             return _Lease()
 
     class _CapacitySlot:
@@ -693,6 +785,7 @@ async def test_new_realtime_wc2026_chat_locks_by_user_and_match(monkeypatch):
 
     assert response.route_type == "realtime"
     assert lock.keys == ["new_wc2026:user-1:75"]
+    assert lock.acquired_ttls[0] >= 330
 
 
 async def test_stream_false_is_rejected_before_side_effects():
@@ -845,6 +938,46 @@ async def test_realtime_explicit_provider_limit_returns_429_without_run():
 
     assert getattr(exc.value, "status_code", None) == 429
     assert getattr(exc.value, "headers", {}).get("Retry-After") == "3"
+
+
+async def test_provider_preflight_counts_metadata_and_wc2026_context_tokens():
+    from app.api.routers import chat
+    from app.core.config import Settings
+
+    seen_requests = []
+
+    class _Limiter:
+        async def check(self, request):
+            seen_requests.append(request)
+            return SimpleNamespace(allowed=True, reason="ALLOWED", retry_after_ms=None)
+
+    body = ChatRequest(
+        message="hi",
+        metadata={"mode": "realtime", "blob": "m" * 900},
+        wc2026_context={
+            **_wc_context("75"),
+            "extra_context": "c" * 900,
+        },
+    )
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(provider_limiter=_Limiter()))
+    )
+
+    route = await chat._apply_provider_preflight(
+        body,
+        request,
+        "realtime",
+        settings=Settings(
+            _env_file=None,
+            llm_provider="openai",
+            openai_api_key="sk-test",
+        ),
+        user_id="user-1",
+    )
+
+    assert route == "realtime"
+    assert seen_requests
+    assert seen_requests[0].estimated_input_tokens > 300
 
 
 async def test_auto_mode_provider_limit_degrades_to_batch():

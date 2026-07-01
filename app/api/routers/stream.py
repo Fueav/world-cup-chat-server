@@ -10,6 +10,8 @@ WebSocket 不经 HTTP 中间件,故在握手阶段自行做轻量鉴权。
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 import logging
 from typing import AsyncIterator
 
@@ -26,6 +28,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import CurrentUser, ReposDep, get_event_bus
 from app.api.repos import Repos
+from app.core.config import get_settings
 from app.core.events import AgentEvent, EventType
 from app.core.ids import new_trace_id
 from app.core.interfaces import EventBus
@@ -61,6 +64,7 @@ async def stream_sse(
     """SSE 端点:逐条推送事件直至终止或客户端断开。"""
     await _assert_run_owner(agent_run_id, user, repos)
     last_event_id = request.headers.get("last-event-id")
+    connection_lease = await _acquire_stream_connection(request.app.state, agent_run_id)
 
     async def event_generator() -> AsyncIterator[dict[str, str]]:
         try:
@@ -77,6 +81,8 @@ async def stream_sse(
                 error=str(exc),
             )
             yield {"event": EventType.ERROR.value, "data": str(exc)}
+        finally:
+            await connection_lease.release()
 
     return EventSourceResponse(event_generator(), ping=_SSE_PING_SECONDS)
 
@@ -99,13 +105,24 @@ async def stream_ws(websocket: WebSocket, agent_run_id: str) -> None:
         except HTTPException:
             await websocket.close(code=1008, reason="无权订阅该运行")
             return
+    try:
+        connection_lease = await _acquire_stream_connection(
+            websocket.app.state,
+            agent_run_id,
+        )
+    except HTTPException:
+        await websocket.close(code=1008, reason="连接数过多")
+        return
     await websocket.accept()
-    await _pump_ws(
-        websocket,
-        bus,
-        agent_run_id,
-        websocket.query_params.get("last_event_id"),
-    )
+    try:
+        await _pump_ws(
+            websocket,
+            bus,
+            agent_run_id,
+            websocket.query_params.get("last_event_id"),
+        )
+    finally:
+        await connection_lease.release()
 
 
 def _ws_user_id(websocket: WebSocket) -> str | None:
@@ -199,7 +216,7 @@ async def _assert_run_owner(agent_run_id: str, user_id: str, repos: Repos) -> No
             detail="会话不存在",
         )
     owner = getattr(conversation, "user_id", None)
-    if owner is not None and owner != user_id:
+    if owner != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="无权订阅该运行",
@@ -238,3 +255,59 @@ def _stream_gap_event(agent_run_id: str, last_event_id: str | None) -> AgentEven
             "last_event_id": last_event_id,
         },
     )
+
+
+@dataclass
+class _StreamConnectionLease:
+    state: object
+    agent_run_id: str
+    enabled: bool = True
+    released: bool = False
+
+    async def release(self) -> None:
+        if self.released or not self.enabled:
+            return
+        self.released = True
+        lock = _stream_connection_lock(self.state)
+        async with lock:
+            counts = _stream_connection_counts(self.state)
+            current = counts.get(self.agent_run_id, 0)
+            if current <= 1:
+                counts.pop(self.agent_run_id, None)
+            else:
+                counts[self.agent_run_id] = current - 1
+
+
+async def _acquire_stream_connection(
+    state: object, agent_run_id: str
+) -> _StreamConnectionLease:
+    limit = int(getattr(get_settings(), "stream_max_connections_per_run", 20) or 0)
+    if limit <= 0:
+        return _StreamConnectionLease(state, agent_run_id, enabled=False)
+    lock = _stream_connection_lock(state)
+    async with lock:
+        counts = _stream_connection_counts(state)
+        current = counts.get(agent_run_id, 0)
+        if current >= limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="STREAM_CONNECTION_LIMIT",
+            )
+        counts[agent_run_id] = current + 1
+    return _StreamConnectionLease(state, agent_run_id)
+
+
+def _stream_connection_lock(state: object) -> asyncio.Lock:
+    lock = getattr(state, "stream_connection_lock", None)
+    if lock is None:
+        lock = asyncio.Lock()
+        setattr(state, "stream_connection_lock", lock)
+    return lock
+
+
+def _stream_connection_counts(state: object) -> dict[str, int]:
+    counts = getattr(state, "stream_connection_counts", None)
+    if counts is None:
+        counts = {}
+        setattr(state, "stream_connection_counts", counts)
+    return counts

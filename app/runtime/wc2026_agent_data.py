@@ -105,7 +105,7 @@ class Wc2026AgentDataService:
                 "status": "locked",
                 "match_id": match_id,
                 "answer_format": _short_answer_contract(locale),
-                "payload": payload,
+                "payload": _agent_visible_locked_payload(payload),
             }
         if self._client is None:
             return {
@@ -261,6 +261,37 @@ def _locked_current_match_payload(
     }
 
 
+def _agent_visible_locked_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove internal mask implementation fields from locked Agent tool data."""
+    current_match = payload.get("current_match")
+    summary = payload.get("summary")
+    probability_model = payload.get("probability_model")
+    recommendation = payload.get("recommendation")
+    strength_index = payload.get("strength_index")
+    return {
+        "match_id": payload.get("match_id"),
+        "current_match": current_match if isinstance(current_match, Mapping) else {},
+        "permission": {
+            "state": "locked",
+            "paid_values_visible": False,
+            "message": (
+                "当前权限下不可展示模型概率、预期进球、比分网格、推荐方向、EV 或实力分具体数值。"
+                "可以解释公开计算口径和解锁后可见的数据类型。"
+            ),
+        },
+        "summary": summary if isinstance(summary, Mapping) else {},
+        "probability_model": (
+            probability_model if isinstance(probability_model, Mapping) else {}
+        ),
+        "recommendation": (
+            recommendation if isinstance(recommendation, Mapping) else {"status": "locked"}
+        ),
+        "strength_index": (
+            strength_index if isinstance(strength_index, Mapping) else {}
+        ),
+    }
+
+
 def _public_methodology_payload(*, locale: str) -> dict[str, Any]:
     """Return public WC2026 methodology constants without match-specific values."""
     return {
@@ -310,6 +341,16 @@ def _short_answer_contract(locale: str) -> dict[str, Any]:
             "mode": "concise_side_panel",
             "default_max_lines": 4,
             "default_max_chars": 650,
+            "expanded_mode": "professional_pre_match_briefing",
+            "expanded_max_chars": 2200,
+            "expanded_sections": [
+                "Conclusion",
+                "Probability center",
+                "Price discipline",
+                "Evidence",
+                "Risk/cancel conditions",
+                "No-bet or paper-watch status",
+            ],
             "fields": ["Conclusion", "Key data", "Basis", "Status/Risk"],
             "expand_only_if_user_asks": [
                 "detail",
@@ -334,6 +375,16 @@ def _short_answer_contract(locale: str) -> dict[str, Any]:
         "mode": "concise_side_panel",
         "default_max_lines": 4,
         "default_max_chars": 420,
+        "expanded_mode": "professional_pre_match_briefing",
+        "expanded_max_chars": 1800,
+        "expanded_sections": [
+            "结论先行",
+            "概率中枢",
+            "价值门槛",
+            "关键证据",
+            "风险与取消条件",
+            "no-bet/纸面观察状态",
+        ],
         "fields": ["结论", "关键数据", "依据", "状态/风险"],
         "expand_only_if_user_asks": [
             "详细",

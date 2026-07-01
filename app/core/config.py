@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     embedding_dim: int = 256
     request_timeout_s: float = 60.0
+    chat_message_max_chars: int = 4000
+    chat_metadata_max_bytes: int = 8192
+    chat_wc2026_context_max_bytes: int = 32768
+    chat_request_max_bytes: int = 49152
     chat_runtime_mode: str = "auto"  # celery | realtime | auto
     realtime_runner_max_concurrency: int = 1000
     provider_rate_limit_enabled: bool = True
@@ -109,7 +113,9 @@ class Settings(BaseSettings):
     provider_realtime_gate_wait_budget_ms: int = 1000
     provider_realtime_degrade_to_batch: bool = True
     run_max_runtime_s: float = 300.0
+    conversation_lock_ttl_s: int = 330
     stream_maxlen: int = 1000
+    stream_max_connections_per_run: int = 20
     metrics_enabled: bool = True
     reaper_enabled: bool = True
     reaper_interval_s: float = 30.0

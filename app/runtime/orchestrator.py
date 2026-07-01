@@ -53,10 +53,12 @@ from app.runtime.chat_behavior import (
     StreamingOutputGuardrail,
     build_answer_format_instruction,
     build_language_instruction,
+    detect_answer_detail_mode,
     detect_target_language,
     evaluate_user_message,
     finalize_assistant_answer,
     is_likely_truncated_answer,
+    streaming_style_max_chars,
 )
 from app.runtime.deps import RuntimeDeps
 from app.runtime.provider_limits import (
@@ -64,7 +66,7 @@ from app.runtime.provider_limits import (
     ProviderLimitRequest,
     ProviderRateLimitError,
     ProviderUsageSettlement,
-    estimate_input_tokens,
+    estimate_structured_input_tokens,
     provider_identity_from_settings,
 )
 from app.runtime.token_stream import TokenAggregator
@@ -83,7 +85,6 @@ _TOOL_NAMES = (
     TOOL_SEARCH_KNOWLEDGE,
     "calculator",
     "clock",
-    "web_search",
     TOOL_WC2026_CURRENT_MATCH_CONTEXT,
     TOOL_WC2026_METHODOLOGY,
 )
@@ -348,6 +349,7 @@ class AgentOrchestrator:
         knowledge_base_owner_user_id = _knowledge_base_owner_user_id(
             self._deps.settings, user_id
         )
+        detailed_answer = detect_answer_detail_mode(user_message)
         deps = AgentDeps(
             retriever=self._contextual_retriever(
                 user_id=user_id,
@@ -364,7 +366,10 @@ class AgentOrchestrator:
             retrieval_top_k=self._deps.settings.retrieval_top_k,
             target_language=target_language,
             language_instruction=build_language_instruction(target_language),
-            answer_format_instruction=build_answer_format_instruction(target_language),
+            answer_format_instruction=build_answer_format_instruction(
+                target_language,
+                detailed=detailed_answer,
+            ),
             wc2026_context=_clean_wc2026_context(wc2026_context),
             wc2026_agent_data=self._deps.wc2026_agent_data,
             wc2026_context_instruction=build_wc2026_context_instruction(
@@ -379,7 +384,11 @@ class AgentOrchestrator:
         raw_chunks: list[str] = []
         llm_started = False
         quota_decision = await self._acquire_provider_quota(
-            agent_run_id, user_message, route_type
+            agent_run_id,
+            user_message,
+            route_type,
+            metadata=metadata,
+            wc2026_context=wc2026_context,
         )
         agent = self._agent_for_quota(quota_decision)
         try:
@@ -399,6 +408,7 @@ class AgentOrchestrator:
                             emitted_chunks,
                             raw_chunks,
                             target_language,
+                            streaming_style_max_chars(detailed=detailed_answer),
                         )
                     elif Agent.is_call_tools_node(node):
                         await self._handle_tool_calls(node, run, emitter)
@@ -410,6 +420,7 @@ class AgentOrchestrator:
                     emitted_chunks,
                     raw_chunks,
                     target_language,
+                    streaming_style_max_chars(detailed=detailed_answer),
                 )
             answer = "".join(emitted_chunks)
             raw_answer = "".join(raw_chunks)
@@ -508,7 +519,13 @@ class AgentOrchestrator:
         return final_answer
 
     async def _acquire_provider_quota(
-        self, agent_run_id: str, user_message: str, route_type: str
+        self,
+        agent_run_id: str,
+        user_message: str,
+        route_type: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        wc2026_context: dict[str, Any] | None = None,
     ) -> ProviderLimitDecision | None:
         """Gate real provider calls before entering the Pydantic AI loop."""
         identity = provider_identity_from_settings(self._deps.settings)
@@ -518,7 +535,11 @@ class AgentOrchestrator:
         request = ProviderLimitRequest(
             provider=identity.provider,
             model=identity.model,
-            estimated_input_tokens=estimate_input_tokens(user_message),
+            estimated_input_tokens=estimate_structured_input_tokens(
+                user_message,
+                metadata or {},
+                wc2026_context or {},
+            ),
             max_output_tokens=self._deps.settings.provider_default_max_output_tokens,
             route_type=route_type,
             agent_run_id=agent_run_id,
@@ -603,10 +624,14 @@ class AgentOrchestrator:
         emitted_chunks: list[str],
         raw_chunks: list[str],
         target_language: str,
+        max_stream_chars: int,
     ) -> bool:
         """处理模型请求节点:首次发 LLM_GENERATING,最终结果阶段流式 TOKEN。"""
         aggregator = TokenAggregator()
-        guardrail = StreamingOutputGuardrail(target_language=target_language)
+        guardrail = StreamingOutputGuardrail(
+            target_language=target_language,
+            max_chars=max_stream_chars,
+        )
         output_guardrail_reported = False
         if not llm_started:
             await emitter.emit(EventType.LLM_GENERATING, {})
@@ -849,11 +874,15 @@ class AgentOrchestrator:
         emitted_chunks: list[str],
         raw_chunks: list[str],
         target_language: str,
+        max_stream_chars: int,
     ) -> None:
         """Fallback for completed model output that did not stream text deltas."""
         raw_chunks.append(output)
         aggregator = TokenAggregator()
-        guardrail = StreamingOutputGuardrail(target_language=target_language)
+        guardrail = StreamingOutputGuardrail(
+            target_language=target_language,
+            max_chars=max_stream_chars,
+        )
         safe_chunk = guardrail.push(output)
         if safe_chunk:
             await self._emit_aggregated_token(

@@ -797,7 +797,6 @@ def _summarize_tools(evidence: list[str]) -> list[str]:
         "get_wc2026_model_methodology",
         "search_knowledge",
         "calculator",
-        "web_search",
     ]
     return [name for name in names if _tool_seen(evidence, name)]
 

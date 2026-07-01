@@ -8,7 +8,7 @@
    实现零 key、确定性、可演示一次「检索->回答」的离线行为。
 2. AgentDeps:通过依赖注入把检索器与工具路由传给各 @agent.tool,工具实现
    仅做薄转发,复用既有 RetrieverAdapter / ToolRouterAdapter 契约。
-3. build_agent(model):构造 Agent 并注册 4 个工具(知识检索 + 计算/时钟/搜索)。
+3. build_agent(model):构造 Agent 并注册工具(知识检索 + 计算/时钟 + WC2026 数据)。
 
 设计原则:Agent 自身无可变状态、可复用;运行所需的协作者经 deps 在每次
 run 时注入,便于 task 装配与测试替身。
@@ -146,19 +146,6 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
         """返回当前的 UTC 与本地时间(ISO 8601 与 Unix 时间戳)。"""
         return await ctx.deps.tool_router.route(
             "", "clock", agent_run_id=ctx.deps.agent_run_id
-        )
-
-    @agent.tool
-    async def web_search(
-        ctx: RunContext[AgentDeps], query: str
-    ) -> dict[str, Any]:
-        """联网搜索,返回与查询相关的结果列表(当前为离线确定性实现)。
-
-        参数:
-            query: 搜索关键词。
-        """
-        return await ctx.deps.tool_router.route(
-            query, "web_search", agent_run_id=ctx.deps.agent_run_id
         )
 
     @agent.tool

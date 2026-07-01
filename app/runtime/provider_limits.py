@@ -187,6 +187,27 @@ def estimate_input_tokens(text: str) -> int:
     return max(1, math.ceil(len(text or "") / 3))
 
 
+def estimate_structured_input_tokens(*values: Any) -> int:
+    """Estimate tokens for user text plus structured runtime context.
+
+    Admission must include server-injected metadata and WC2026 context, not only
+    the visible user message, otherwise a small prompt with a large context can
+    reserve too few provider tokens.
+    """
+    parts: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            parts.append(value)
+            continue
+        try:
+            parts.append(json.dumps(value, ensure_ascii=False, sort_keys=True))
+        except (TypeError, ValueError):
+            parts.append(str(value))
+    return estimate_input_tokens("\n".join(parts))
+
+
 def load_provider_limit_config(settings: Settings) -> dict[tuple[str, str], ProviderLimitConfig]:
     raw = getattr(settings, "provider_rate_limits_json", "{}") or "{}"
     try:
@@ -251,8 +272,9 @@ class InMemoryProviderRateLimiter:
         if actual is None:
             self._metrics.inc_counter("provider_usage_missing_total", labels)
             return ProviderUsageDecision(
-                settled=False,
+                settled=True,
                 usage_missing=True,
+                debit_tokens=0,
                 provider_key_id=settlement.provider_key_id,
             )
         debit = max(0, actual - max(0, settlement.reserved_tokens))
@@ -784,8 +806,9 @@ return {debit, tpm_tokens}
         if actual is None:
             self._metrics.inc_counter("provider_usage_missing_total", labels)
             return ProviderUsageDecision(
-                settled=False,
+                settled=True,
                 usage_missing=True,
+                debit_tokens=0,
                 provider_key_id=settlement.provider_key_id,
             )
         debit = max(0, actual - max(0, settlement.reserved_tokens))

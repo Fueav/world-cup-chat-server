@@ -104,6 +104,11 @@ class RealtimeRunner:
     ) -> RealtimeRunResult:
         slot = capacity_slot or self.try_acquire_capacity()
         if slot is None:
+            await self._finalize_failure(
+                request,
+                error_code="REALTIME_RUNNER_BUSY",
+                stage="runner_capacity",
+            )
             return RealtimeRunResult(
                 agent_run_id=request.agent_run_id,
                 status=RunStatus.FAILED,
@@ -155,13 +160,23 @@ class RealtimeRunner:
                 "runner_timeouts_total",
                 {"runner_id": self._runner_id},
             )
-            await self._finalize_timeout(request)
+            await self._finalize_failure(
+                request,
+                error_code="RUN_TIMEOUT",
+                stage="runner_timeout",
+            )
             return RealtimeRunResult(
                 agent_run_id=request.agent_run_id,
                 status=RunStatus.FAILED,
                 error="RUN_TIMEOUT",
             )
         except Exception as exc:  # noqa: BLE001 runner must converge to terminal result
+            if not _orchestrator_already_converged(exc):
+                await self._finalize_failure(
+                    request,
+                    error_code="REALTIME_RUNNER_FAILED",
+                    stage="runner",
+                )
             return RealtimeRunResult(
                 agent_run_id=request.agent_run_id,
                 status=RunStatus.FAILED,
@@ -219,12 +234,18 @@ class RealtimeRunner:
 
         return AgentOrchestrator(build_deps())
 
-    async def _finalize_timeout(self, request: RealtimeRunRequest) -> None:
-        """Best-effort terminal state/event for runner-level timeout."""
+    async def _finalize_failure(
+        self,
+        request: RealtimeRunRequest,
+        *,
+        error_code: str,
+        stage: str,
+    ) -> None:
+        """Best-effort terminal state/events for failures outside orchestration."""
         try:
             from app.tasks import run_store
 
-            await run_store.mark_run_failed(request.agent_run_id, "RUN_TIMEOUT")
+            await run_store.mark_run_failed(request.agent_run_id, error_code)
         except Exception:
             pass
         if self._event_bus is None:
@@ -237,7 +258,17 @@ class RealtimeRunner:
                     trace_id=request.trace_id,
                     type=EventType.ERROR,
                     seq=0,
-                    data={"stage": "runner", "error": "RUN_TIMEOUT"},
+                    data={"stage": stage, "error": error_code},
+                ),
+            )
+            await self._event_bus.publish(
+                f"run:{request.agent_run_id}",
+                AgentEvent(
+                    agent_run_id=request.agent_run_id,
+                    trace_id=request.trace_id,
+                    type=EventType.RUN_COMPLETED,
+                    seq=0,
+                    data={"status": RunStatus.FAILED.value, "error": error_code},
                 ),
             )
         except Exception:
@@ -246,3 +277,9 @@ class RealtimeRunner:
 
 def now_seconds() -> float:
     return time.time()
+
+
+def _orchestrator_already_converged(exc: Exception) -> bool:
+    """Return true for exceptions raised after orchestrator emitted terminal state."""
+    name = exc.__class__.__name__
+    return name in {"ProviderRateLimitError", "TruncatedOutputError"}

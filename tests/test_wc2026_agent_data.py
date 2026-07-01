@@ -71,7 +71,16 @@ async def test_locked_context_does_not_call_paid_match_context():
     assert result["match_id"] == "75"
     assert result["answer_format"]["mode"] == "concise_side_panel"
     assert result["answer_format"]["fields"] == ["结论", "关键数据", "依据", "状态/风险"]
-    assert result["payload"]["access"]["viewer_scope"] == "locked"
+    assert result["answer_format"]["expanded_mode"] == "professional_pre_match_briefing"
+    assert result["answer_format"]["expanded_max_chars"] == 1800
+    assert "概率中枢" in result["answer_format"]["expanded_sections"]
+    assert result["payload"]["permission"]["state"] == "locked"
+    assert result["payload"]["permission"]["paid_values_visible"] is False
+    serialized = str(result["payload"])
+    assert "viewer_scope" not in serialized
+    assert "mask_policy" not in serialized
+    assert "block_b" not in serialized
+    assert "block_d" not in serialized
 
 
 async def test_unlocked_context_calls_current_match_only_and_masks_payload():
@@ -88,6 +97,9 @@ async def test_unlocked_context_calls_current_match_only_and_masks_payload():
     assert result["match_id"] == "75"
     assert result["answer_format"]["mode"] == "concise_side_panel"
     assert result["answer_format"]["default_max_chars"] == 420
+    assert result["answer_format"]["expanded_mode"] == "professional_pre_match_briefing"
+    assert result["answer_format"]["expanded_max_chars"] == 1800
+    assert "价值门槛" in result["answer_format"]["expanded_sections"]
     assert "Markdown 表格" in result["answer_format"]["forbidden_by_default"]
     assert result["payload"]["probability_model"]["wdl_probability"]["home"] == 62.1
 

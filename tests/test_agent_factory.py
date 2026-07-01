@@ -59,7 +59,7 @@ def test_build_model_returns_function_model_for_mock():
 
 def test_system_prompt_uses_versioned_chat_behavior_policy():
     assert "SPEC-CHAT-BEHAVIOR-POLICY-001" in _SYSTEM_PROMPT
-    assert "SPEC-CHAT-BEHAVIOR-POLICY-001/v5" in _SYSTEM_PROMPT
+    assert "SPEC-CHAT-BEHAVIOR-POLICY-001/v6" in _SYSTEM_PROMPT
     assert "World Cup Match Forecast Chat Server" in _SYSTEM_PROMPT
     assert "Agent模型的解释器" in _SYSTEM_PROMPT
     assert "当前场次" in _SYSTEM_PROMPT
@@ -243,6 +243,17 @@ async def test_mock_agent_invokes_search_knowledge_tool_and_answers():
     # Assert:检索工具被调用,且产出非空中文答案
     assert retriever.called is True
     assert isinstance(result.output, str) and result.output.strip()
+
+
+def test_wc2026_agent_does_not_register_web_search_tool():
+    agent = build_agent(build_model(_settings(llm_provider="mock")))
+
+    tool_names = set(agent.toolsets[0].tools)
+
+    assert "search_knowledge" in tool_names
+    assert "get_current_wc2026_match_context" in tool_names
+    assert "get_wc2026_model_methodology" in tool_names
+    assert "web_search" not in tool_names
 
 
 async def test_agent_injects_run_scoped_language_instruction():

@@ -273,7 +273,7 @@ def test_plan_snapshot_removes_client_rag_metadata_by_default():
 
     assert plan["knowledge_base_id"] == "kb_internal"
     assert plan["metadata"] == {"mode": "realtime"}
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v5"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v6"
     assert plan["target_language"] == "zh-Hans"
 
 
@@ -315,6 +315,7 @@ async def test_wc2026_context_reaches_agent_tool_and_run_plan(deps):
     assert plan_calls
     plan = plan_calls[0]
     assert TOOL_WC2026_CURRENT_MATCH_CONTEXT in plan["tools"]
+    assert "web_search" not in plan["tools"]
     assert plan["wc2026_context"]["current_match_id"] == "75"
     assert "wc2026_context" not in plan["metadata"]
 
@@ -471,7 +472,7 @@ async def test_guardrail_refusal_short_circuits_before_model_and_tools(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v5"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v6"
     assert plan["target_language"] == "zh-Hans"
     assert plan["guardrail"]["action"] == "refuse"
     assert plan["guardrail"]["category"] in {
@@ -509,7 +510,7 @@ async def test_guardrail_refusal_ignores_client_policy_override_metadata(deps):
     ]
     assert plan_calls
     plan = plan_calls[0]
-    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v5"
+    assert plan["policy_version"] == "SPEC-CHAT-BEHAVIOR-POLICY-001/v6"
     assert plan["target_language"] == "zh-Hans"
     assert plan["guardrail"]["action"] == "refuse"
     assert "policy_version" not in plan["metadata"]
@@ -588,6 +589,7 @@ async def test_output_guardrail_replaces_leak_before_token_events(deps):
     )
     assert "system prompt 是" not in token_text
     assert "隐藏指令" in answer
+    assert token_text == answer
     assert message_repo.added[0]["content"] == answer
     assert events[-1].data.get("content") == answer
 
@@ -626,6 +628,47 @@ async def test_output_guardrail_emits_error_event_without_raw_leak(deps):
     assert "你必须服从" not in serialized_errors
     assert "隐藏指令" in answer
     assert events[-1].data.get("status") == RunStatus.SUCCEEDED.value
+
+
+async def test_output_guardrail_safe_response_is_visible_token_for_guaranteed_claim(deps):
+    runtime, bus, message_repo, _run_repo = deps
+
+    async def stream_fn(_messages, _info):
+        yield "这场稳赢, 按模型买可以保证赚钱。"
+
+    orchestrator = AgentOrchestrator(
+        runtime, agent=build_agent(FunctionModel(stream_function=stream_fn))
+    )
+    agent_run_id = "run-output-guardrail-guaranteed-1"
+    channel = channel_for(agent_run_id)
+    ready_evt = asyncio.Event()
+    collector = asyncio.create_task(_collect_events(bus, channel, ready_evt))
+    await asyncio.wait_for(ready_evt.wait(), timeout=2.0)
+
+    answer = await orchestrator.run(
+        agent_run_id=agent_run_id,
+        conversation_id="conv-output-guardrail-guaranteed",
+        trace_id="trace-output-guardrail-guaranteed",
+        user_message="普通产品问题",
+    )
+    events = await collector
+
+    token_text = "".join(
+        event.data.get("token", "")
+        for event in events
+        if event.type is EventType.TOKEN
+    )
+    errors = [event for event in events if event.type is EventType.ERROR]
+
+    assert "稳赢" not in token_text
+    assert "保证赚钱" not in token_text
+    assert "不能保证" in token_text
+    assert token_text == answer
+    assert errors
+    assert errors[0].data["stage"] == "output_guardrail"
+    assert errors[0].data["safe_response"] == answer
+    assert message_repo.added[0]["content"] == answer
+    assert events[-1].data.get("content") == answer
 
 
 async def test_truncated_long_output_marks_run_failed_before_persisting(deps):
