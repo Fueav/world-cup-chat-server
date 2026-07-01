@@ -12,6 +12,8 @@ services:
     containerPort: 8080
     protocol: http
     domainTemplate: "{{ .Service }}-{{ .Env }}.{{ .BaseDomain }}"
+    proxy:
+      requestTimeout: 0
   - name: db
     kind: tcp
     containerPort: 5432
