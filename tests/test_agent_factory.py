@@ -125,7 +125,7 @@ def test_build_model_zai_uses_openai_chat_model_with_glm52_defaults():
 def test_default_zai_effect_eval_budget_reduces_cutoff_risk():
     settings = _settings()
 
-    assert settings.provider_default_max_output_tokens >= 2048
+    assert settings.provider_default_max_output_tokens >= 8192
     assert settings.zai_reasoning_effort == "medium"
 
 

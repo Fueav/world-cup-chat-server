@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     provider_rate_limits_json: str = "{}"
     provider_default_rpm: int = 100000
     provider_default_tpm: int = 1000000
-    provider_default_max_output_tokens: int = 2048
+    provider_default_max_output_tokens: int = 8192
     provider_realtime_preflight_timeout_ms: int = 100
     provider_realtime_gate_wait_budget_ms: int = 1000
     provider_realtime_degrade_to_batch: bool = True

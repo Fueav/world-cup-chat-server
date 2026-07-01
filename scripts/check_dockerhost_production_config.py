@@ -62,10 +62,10 @@ def main() -> int:
     _require(
         compose.count(
             "PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS: "
-            "${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-2048}"
+            "${PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS:-8192}"
         )
         >= 2,
-        "api and worker must default provider max output tokens to 2048",
+        "api and worker must default provider max output tokens to 8192",
         errors,
     )
 
