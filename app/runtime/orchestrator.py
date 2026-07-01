@@ -209,9 +209,8 @@ class AgentOrchestrator:
             agent: 可选注入的 PydanticAI Agent(测试用);缺省按配置构建。
         """
         self._deps = deps
-        self._agent = agent or build_agent(
-            build_model(deps.settings, deps.secret_provider)
-        )
+        self._agent = agent
+        self._agent_cache: dict[str, Agent[AgentDeps, str]] = {}
 
     async def run(
         self,
@@ -382,8 +381,9 @@ class AgentOrchestrator:
         quota_decision = await self._acquire_provider_quota(
             agent_run_id, user_message, route_type
         )
+        agent = self._agent_for_quota(quota_decision)
         try:
-            async with self._agent.iter(
+            async with agent.iter(
                 user_message,
                 deps=deps,
                 message_history=message_history or None,
@@ -427,7 +427,9 @@ class AgentOrchestrator:
         except TruncatedOutputError:
             raise
         except Exception as exc:
-            provider_error = await self._record_provider_exception(exc)
+            provider_error = await self._record_provider_exception(
+                exc, quota_decision
+            )
             if provider_error is not None:
                 reason = (
                     "RATE_LIMITED"
@@ -449,6 +451,28 @@ class AgentOrchestrator:
                 target_language,
                 raw_answer=raw_answer or answer,
             )
+
+    def _agent_for_quota(
+        self,
+        decision: ProviderLimitDecision | None,
+    ) -> Agent[AgentDeps, str]:
+        """Build or reuse an agent bound to the selected provider key."""
+        if self._agent is not None:
+            return self._agent
+        provider_key_secret = decision.provider_key_secret if decision else None
+        cache_key = decision.provider_key_id if decision and decision.provider_key_id else "__default__"
+        cached = self._agent_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        agent = build_agent(
+            build_model(
+                self._deps.settings,
+                self._deps.secret_provider,
+                provider_key_secret=provider_key_secret,
+            )
+        )
+        self._agent_cache[cache_key] = agent
+        return agent
 
     async def _finalize_answer_integrity(
         self,
@@ -542,12 +566,17 @@ class AgentOrchestrator:
                     actual_input_tokens=usage.get("input_tokens"),
                     actual_output_tokens=usage.get("output_tokens"),
                     route_type=route_type,
+                    provider_key_id=decision.provider_key_id,
                 )
             )
         except Exception as exc:
             raise ProviderRateLimitError("UNAVAILABLE", retry_after_ms=1000) from exc
 
-    async def _record_provider_exception(self, exc: Exception) -> Any | None:
+    async def _record_provider_exception(
+        self,
+        exc: Exception,
+        decision: ProviderLimitDecision | None = None,
+    ) -> Any | None:
         from app.llm.providers import map_provider_error
 
         info = map_provider_error(exc)
@@ -561,6 +590,7 @@ class AgentOrchestrator:
             identity.model,
             info.status_code,
             info.retry_after_ms,
+            provider_key_id=decision.provider_key_id if decision else None,
         )
         return info
 

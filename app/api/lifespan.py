@@ -29,6 +29,7 @@ from app.core.logging import configure_logging, get_logger, log_with_fields
 from app.core.metrics import Metrics
 from app.core.secrets import build_secret_provider
 from app.runtime.locks import ConversationLock, RunLease
+from app.runtime.provider_keys import build_provider_key_pool
 from app.runtime.provider_limits import (
     build_provider_limiter,
     provider_identity_from_settings,
@@ -84,12 +85,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     event_bus = _build_event_bus(settings.redis_url, redis, metrics)
     secret_provider = build_secret_provider(settings)
     identity = provider_identity_from_settings(settings)
-    secret_provider.validate_required(identity.provider, identity.model)
-    provider_limiter = build_provider_limiter(settings, redis_client=redis, metrics=metrics)
+    provider_key_pool = build_provider_key_pool(settings, secret_provider)
+    if not identity.mock and not provider_key_pool.enabled_slots:
+        secret_provider.validate_required(identity.provider, identity.model)
+    provider_limiter = build_provider_limiter(
+        settings,
+        redis_client=redis,
+        metrics=metrics,
+        secret_provider=secret_provider,
+        key_pool=provider_key_pool,
+    )
     app.state.redis = redis
     app.state.metrics = metrics
     app.state.event_bus = event_bus
     app.state.secret_provider = secret_provider
+    app.state.provider_key_pool = provider_key_pool
     app.state.provider_limiter = provider_limiter
     app.state.rate_limiter = RateLimiter(redis, settings.rate_limit_per_min)
     app.state.conversation_lock = ConversationLock(redis_client=redis)

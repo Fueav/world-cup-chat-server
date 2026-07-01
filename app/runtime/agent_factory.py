@@ -39,7 +39,12 @@ from pydantic_ai.models.function import (
 )
 
 from app.core.config import Settings, get_settings
-from app.core.secrets import SecretProvider, build_secret_provider, is_mock_provider
+from app.core.secrets import (
+    SecretProvider,
+    SecretValue,
+    build_secret_provider,
+    is_mock_provider,
+)
 from app.runtime.chat_behavior import (
     DEFAULT_CHAT_BEHAVIOR_POLICY,
     build_system_prompt,
@@ -198,6 +203,7 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
 def build_model(
     settings: Settings | None = None,
     secret_provider: SecretProvider | None = None,
+    provider_key_secret: SecretValue | None = None,
 ) -> Model:
     """按配置选择 PydanticAI 原生 model;未知或 mock 时回退到离线 FunctionModel。"""
     settings = settings or get_settings()
@@ -206,31 +212,39 @@ def build_model(
     if is_mock_provider(provider):
         return build_mock_model()
     if provider == "openai":
-        secret_provider.validate_required("openai", settings.openai_model)
-        api_key = secret_provider.get_secret("openai_api_key")
+        api_key = provider_key_secret
+        if api_key is None:
+            secret_provider.validate_required("openai", settings.openai_model)
+            api_key = secret_provider.get_secret("openai_api_key")
         return _openai_model(
             settings.openai_model,
             settings.openai_base_url,
             api_key.reveal() if api_key else "",
         )
     if provider == "qwen":
-        secret_provider.validate_required("qwen", settings.qwen_model)
-        api_key = secret_provider.get_secret("dashscope_api_key")
+        api_key = provider_key_secret
+        if api_key is None:
+            secret_provider.validate_required("qwen", settings.qwen_model)
+            api_key = secret_provider.get_secret("dashscope_api_key")
         return _openai_model(
             settings.qwen_model,
             settings.qwen_base_url,
             api_key.reveal() if api_key else "",
         )
     if provider == "zai":
-        secret_provider.validate_required("zai", settings.zai_model)
-        api_key = secret_provider.get_secret("zai_api_key")
+        api_key = provider_key_secret
+        if api_key is None:
+            secret_provider.validate_required("zai", settings.zai_model)
+            api_key = secret_provider.get_secret("zai_api_key")
         return _zai_model(settings, api_key.reveal() if api_key else "")
     if provider == "anthropic":
         from pydantic_ai.models.anthropic import AnthropicModel
         from pydantic_ai.providers.anthropic import AnthropicProvider
 
-        secret_provider.validate_required("anthropic", settings.anthropic_model)
-        api_key = secret_provider.get_secret("anthropic_api_key")
+        api_key = provider_key_secret
+        if api_key is None:
+            secret_provider.validate_required("anthropic", settings.anthropic_model)
+            api_key = secret_provider.get_secret("anthropic_api_key")
         return AnthropicModel(
             settings.anthropic_model,
             provider=AnthropicProvider(api_key=api_key.reveal() if api_key else ""),
@@ -239,8 +253,10 @@ def build_model(
         from pydantic_ai.models.google import GoogleModel
         from pydantic_ai.providers.google import GoogleProvider
 
-        secret_provider.validate_required("gemini", settings.gemini_model)
-        api_key = secret_provider.get_secret("gemini_api_key")
+        api_key = provider_key_secret
+        if api_key is None:
+            secret_provider.validate_required("gemini", settings.gemini_model)
+            api_key = secret_provider.get_secret("gemini_api_key")
         return GoogleModel(
             settings.gemini_model,
             provider=GoogleProvider(api_key=api_key.reveal() if api_key else ""),

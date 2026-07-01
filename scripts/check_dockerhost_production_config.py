@@ -10,15 +10,22 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "dockerhost" / "compose.yaml"
 ENV_EXAMPLE = ROOT / "dockerhost" / "env.example"
+TEMPLATE = ROOT / "dockerhost" / "template.yaml"
 
 
 def main() -> int:
     errors: list[str] = []
     compose = COMPOSE.read_text(encoding="utf-8")
     env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
+    template = TEMPLATE.read_text(encoding="utf-8")
 
     _require("  reaper:" in compose, "dockerhost compose must define reaper service", errors)
     _require("app.tasks.reaper" in compose, "reaper service must run app.tasks.reaper", errors)
+    _require(
+        "proxy:\n      requestTimeout: 0" in template,
+        "api web service must disable DockerHost request timeout for SSE streams",
+        errors,
+    )
     _require(
         "${WORKER_POOL:-prefork}" in compose,
         "worker pool must be env-configurable with prefork default",
@@ -46,6 +53,10 @@ def main() -> int:
         "WORKER_CONCURRENCY",
         "WC2026_AGENT_API_BASE_URL",
         "WC2026_AGENT_API_TIMEOUT_S",
+        "PROVIDER_KEY_POOL_FILE",
+        "PROVIDER_KEY_POOL_SCOPE",
+        "PROVIDER_KEY_POOL_STRATEGY",
+        "ZAI_API_KEYS_FILE",
     ):
         _require(f"{name}=" in env_example, f"env.example must document {name}", errors)
     for name in (
@@ -68,6 +79,17 @@ def main() -> int:
         "api and worker must default provider max output tokens to 8192",
         errors,
     )
+    for name in (
+        "PROVIDER_KEY_POOL_FILE",
+        "PROVIDER_KEY_POOL_SCOPE",
+        "PROVIDER_KEY_POOL_STRATEGY",
+        "ZAI_API_KEYS_FILE",
+    ):
+        _require(
+            compose.count(f"{name}:") >= 2,
+            f"api and worker must pass {name}",
+            errors,
+        )
 
     if errors:
         for error in errors:

@@ -15,6 +15,10 @@ from app.core.logging import get_logger
 from app.core.metrics import Metrics
 from app.core.secrets import ProviderSecretMissingError, build_secret_provider
 from app.db.session import async_session_factory
+from app.runtime.provider_keys import (
+    ProviderKeyPoolConfigError,
+    build_provider_key_pool,
+)
 from app.runtime.provider_limits import provider_identity_from_settings
 
 logger = get_logger(__name__)
@@ -101,16 +105,33 @@ def _check_provider_secret(request: Request, checks: dict[str, str]) -> bool:
     identity = provider_identity_from_settings(settings)
     if identity.mock:
         checks["provider_secret"] = "mock"
+        checks["provider_key_pool"] = "mock"
         return True
     provider = getattr(request.app.state, "secret_provider", None)
     if provider is None:
         provider = build_secret_provider(settings)
+    pool = getattr(request.app.state, "provider_key_pool", None)
+    if pool is None:
+        try:
+            pool = build_provider_key_pool(settings, provider)
+        except (OSError, ProviderKeyPoolConfigError):
+            checks["provider_secret"] = "missing"
+            checks["provider_key_pool"] = "invalid"
+            return False
+    if pool.enabled_slots:
+        checks["provider_secret"] = (
+            "key_pool" if pool.status != "single" else "configured"
+        )
+        checks["provider_key_pool"] = f"{pool.status}:{len(pool.enabled_slots)}"
+        return True
     try:
         provider.validate_required(identity.provider, identity.model)
     except ProviderSecretMissingError:
         checks["provider_secret"] = "missing"
+        checks["provider_key_pool"] = "missing"
         return False
     checks["provider_secret"] = "configured"
+    checks["provider_key_pool"] = "single:1"
     return True
 
 

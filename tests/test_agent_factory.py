@@ -17,6 +17,7 @@ from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel
 
 from app.core.config import Settings
+from app.core.secrets import SecretValue
 from app.runtime.agent_factory import (
     AgentDeps,
     TOOL_WC2026_CURRENT_MATCH_CONTEXT,
@@ -121,6 +122,23 @@ def test_build_model_zai_uses_openai_chat_model_with_glm52_defaults():
     }
     assert model.profile.openai_chat_thinking_field == "reasoning_content"
     assert model.profile.openai_supports_strict_tool_definition is False
+
+
+def test_build_model_uses_selected_provider_key_secret(monkeypatch):
+    captured: dict[str, str] = {}
+
+    def _fake_zai_model(settings: Settings, api_key: str):
+        captured["api_key"] = api_key
+        return build_model(_settings(llm_provider="mock"))
+
+    monkeypatch.setattr("app.runtime.agent_factory._zai_model", _fake_zai_model)
+
+    build_model(
+        _settings(llm_provider="zai", zai_api_key="fallback-secret"),
+        provider_key_secret=SecretValue("selected-secret"),
+    )
+
+    assert captured["api_key"] == "selected-secret"
 
 
 def test_default_zai_effect_eval_budget_reduces_cutoff_risk():

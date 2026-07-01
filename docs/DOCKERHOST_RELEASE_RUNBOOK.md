@@ -181,6 +181,34 @@ envctl up \
   --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file>
 ```
 
+需要用多把 Z.AI key 提升并发时,不要把 key 写成多个环境变量,使用仓库外私有文件并通过 DockerHost secret-file 注入。最简单格式是一行一个 key;也可以使用 provider-neutral JSON key pool 文件。`PROVIDER_KEY_POOL_SCOPE=key` 表示每把 key 有独立 RPM/TPM 桶,aggregate 桶仍作为总保护。
+
+```bash
+export LLM_PROVIDER=zai
+export PROVIDER_KEY_POOL_SCOPE=key
+
+envctl up \
+  --name "$ENV_NAME" \
+  --git-url "$GIT_URL" \
+  --git-ref "$GIT_REF" \
+  --git-subdir dockerhost \
+  --secret-file ZAI_API_KEYS_FILE=<path-to-private-zai-keys-file> \
+  --secret-env GEMINI_API_KEY \
+  --secret-env WC2026_AGENT_API_KEY
+```
+
+如果需要同时配置多个 provider/model 或自定义 slot id、rpm、tpm,使用 `PROVIDER_KEY_POOL_FILE`:
+
+```bash
+envctl up \
+  --name "$ENV_NAME" \
+  --git-url "$GIT_URL" \
+  --git-ref "$GIT_REF" \
+  --git-subdir dockerhost \
+  --secret-file PROVIDER_KEY_POOL_FILE=<path-to-private-provider-key-pool-json> \
+  --secret-env GEMINI_API_KEY
+```
+
 如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。WC2026 Agent 数据接口还需要普通环境变量 `WC2026_AGENT_API_BASE_URL` 和可选 `WC2026_AGENT_API_TIMEOUT_S`;如果目标中心化环境要求 `wc-api-key`,密钥只通过 `WC2026_AGENT_API_KEY` secret 注入,不要把真实值写进仓库或命令日志。
 
 ## 5. Git Ref Deploy
@@ -222,7 +250,9 @@ curl -fsS "$BASE_URL/readyz"
 - `/healthz` 返回 2xx。
 - `/readyz` 返回 2xx。
 - `/readyz` 不包含 provider key、`ENVCTL_TOKEN` 或任何 secret 值。
-- `/readyz` 表示 DB、Redis、event bus、provider secret、provider limiter 均 ready。
+- `/readyz` 表示 DB、Redis、event bus、provider secret 或 key pool、provider limiter 均 ready。
+- 单 key 真实模型链路应看到 `provider_secret=configured`。
+- 多 key 链路应看到 `provider_secret=key_pool` 且 `provider_key_pool=configured:<slot_count>`;排障时只记录 slot 数,不要记录 key 内容。
 
 可选支持证据:
 

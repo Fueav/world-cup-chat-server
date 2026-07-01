@@ -44,7 +44,7 @@ https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org
 | Base URL | `https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org` |
 | Deployed Git ref | `main`；精确 commit 以 DockerHost `envctl status` 为准。 |
 | Provider | Z.AI `glm-5.2` |
-| Provider readiness | `/readyz` reports `provider_secret=configured` |
+| Provider readiness | `/readyz` reports `provider_secret=configured` for single-key deployments or `provider_secret=key_pool` with `provider_key_pool=configured:<slot_count>` for multi-key deployments |
 | WC2026 central API | 当前 DockerHost 环境使用 `https://moss-dev.moss.site/api/v1`，并已通过 DockerHost secret 注入 `WC2026_AGENT_API_KEY`。 |
 | Verified at | `2026-06-30 16:24 Asia/Shanghai` |
 
@@ -820,13 +820,20 @@ curl -sS "$BASE_URL/metrics"
 - `redis`
 - `event_bus`
 - `provider_secret`
+- `provider_key_pool`
 - `provider_limiter`
 - `reaper`
 
-真实模型链路下，`provider_secret` 应该是：
+单 key 真实模型链路下，`provider_secret` 应该是：
 
 ```json
 "configured"
+```
+
+多 key 链路下，`provider_secret` 应该是 `key_pool`，并且 `provider_key_pool` 应该类似：
+
+```json
+"configured:2"
 ```
 
 `/metrics` 返回 Prometheus text。常用指标：

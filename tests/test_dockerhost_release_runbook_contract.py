@@ -154,6 +154,22 @@ def test_runbook_preserves_secret_hygiene_contract():
     assert not missing_hygiene, f"Docs contain secret-like markers: {missing_hygiene}"
 
 
+def test_runbook_documents_provider_key_pool_secret_file_deploy():
+    runbook = _read(RUNBOOK_PATH)
+
+    _assert_contains_all(
+        runbook,
+        [
+            "ZAI_API_KEYS_FILE",
+            "PROVIDER_KEY_POOL_FILE",
+            "PROVIDER_KEY_POOL_SCOPE=key",
+            "--secret-file ZAI_API_KEYS_FILE=<path-to-private-zai-keys-file>",
+            "provider_secret=key_pool",
+            "provider_key_pool=configured",
+        ],
+    )
+
+
 def _read(path: Path) -> str:
     assert path.exists(), f"Missing expected document: {path}"
     return path.read_text(encoding="utf-8")

@@ -116,6 +116,55 @@ async def test_readyz_fails_for_missing_real_provider_secret(monkeypatch):
     assert '"provider_secret":"missing"' in response.body.decode()
 
 
+async def test_readyz_accepts_provider_key_pool_without_single_secret(monkeypatch):
+    from app.api.routers import health
+    from app.core.config import Settings
+    from app.runtime.provider_keys import ProviderKeyPool, ProviderKeySlot
+
+    class _Redis:
+        async def ping(self):
+            return True
+
+    async def _ok_db(checks):
+        checks["db"] = "ok"
+        return True
+
+    pool = ProviderKeyPool(
+        provider="zai",
+        model="glm-5.2",
+        scope="key",
+        slots=[
+            ProviderKeySlot.for_test(
+                "zai", "glm-5.2", "zai-k001", "secret-1", rpm=60, tpm=60000
+            )
+        ],
+    )
+    monkeypatch.setattr(health, "_check_db", _ok_db)
+    monkeypatch.setattr(
+        health,
+        "get_settings",
+        lambda: Settings(_env_file=None, llm_provider="zai", zai_api_key=""),
+    )
+
+    response = await health.readyz(
+        SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    redis=_Redis(),
+                    event_bus=object(),
+                    provider_limiter=object(),
+                    provider_key_pool=pool,
+                )
+            )
+        )
+    )
+
+    body = response.body.decode()
+    assert response.status_code == 200
+    assert '"provider_secret":"key_pool"' in body
+    assert '"provider_key_pool":"configured:1"' in body
+
+
 async def test_readyz_fails_when_redis_ping_fails(monkeypatch):
     from app.api.routers import health
     from app.core.config import Settings
