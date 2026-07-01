@@ -18,6 +18,7 @@
   - Assert detailed requests map to professional pre-match briefing instructions.
   - Assert expanded streaming style allows a materially longer answer than the default concise cap.
   - Assert concise and expanded answer-format instructions allow bounded WC2026-themed emoji.
+  - Assert streaming style filtering removes Unicode replacement characters before delivery.
   - Assert current-match answer metadata exposes expanded briefing mode.
   - Assert current-match answer metadata exposes the bounded emoji style contract.
 - Verification:
@@ -32,6 +33,7 @@
   - Detect explicit depth requests such as `详细`, `展开`, `深入`, `分析一下`, `deep dive`, or `in-depth`.
   - Inject expanded briefing format only for those requests.
   - Allow sparse football/trophy/chart/target emoji in normal match-analysis formatting, with at most one per line or section and plain risk notes.
+  - Strip Unicode replacement characters from streamed answer text so broken emoji/token boundaries do not reach the UI.
   - Keep default side-panel instructions and default stream cap unchanged.
 - Rollback note:
   - Revert the detail detector and expanded stream cap wiring; default concise behavior remains.

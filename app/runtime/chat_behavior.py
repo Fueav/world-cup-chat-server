@@ -553,6 +553,7 @@ _MARKDOWN_TABLE_LINE_RE = re.compile(r"^\s*\|.+\|\s*$")
 _MARKDOWN_TABLE_SEPARATOR_RE = re.compile(r"^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$")
 _MARKDOWN_HORIZONTAL_RULE_RE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
 _MARKDOWN_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+")
+_UNICODE_REPLACEMENT_CHAR = "\uFFFD"
 _EXPANDED_ANSWER_PATTERNS = (
     re.compile(r"(详细|展开|完整|全量|深入|深度|细讲|拆开|逐项|复盘式|长分析)"),
     re.compile(r"分析一下"),
@@ -665,6 +666,7 @@ class StreamingOutputGuardrail:
         return self._clamp_style_chunk(filtered)
 
     def _filter_style_line(self, line: str) -> str:
+        line = line.replace(_UNICODE_REPLACEMENT_CHAR, "")
         stripped = line.strip()
         if _MARKDOWN_TABLE_LINE_RE.match(stripped):
             return _markdown_table_line_to_text(stripped)

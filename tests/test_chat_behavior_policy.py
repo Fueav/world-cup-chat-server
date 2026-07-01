@@ -564,6 +564,18 @@ def test_streaming_output_guardrail_removes_markdown_table_lines():
     assert "风险提示:概率不是保证" in safe_text
 
 
+def test_streaming_output_guardrail_removes_unicode_replacement_character():
+    guardrail = StreamingOutputGuardrail(tail_chars=0)
+
+    chunk = guardrail.push("**依据:** �\n风险提示:概率不是保证。")
+    tail = guardrail.finish()
+
+    safe_text = (chunk or "") + (tail or "")
+    assert "�" not in safe_text
+    assert "**依据:**" in safe_text
+    assert "风险提示:概率不是保证" in safe_text
+
+
 def test_streaming_output_guardrail_clamps_verbose_default_answer():
     guardrail = StreamingOutputGuardrail(tail_chars=0)
     verbose = (

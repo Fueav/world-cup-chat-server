@@ -22,6 +22,9 @@
   Emoji must be sparse: at most one per short line or briefing section, never
   stacked, and never used to replace numbers, evidence, no-bet status, or risk
   language.
+- Streaming output must not expose Unicode replacement characters produced by
+  provider token boundary issues; these characters should be stripped before
+  frontend delivery.
 - Expanded answers must remain evidence-led and must not fabricate probabilities, expected goals, CLOB prices, liquidity, recommendations, lineup news, or market data.
 - Expanded answers should be organized around:
   - conclusion first
@@ -65,6 +68,8 @@
 - Default concise answers still use the four-field side-panel contract.
 - Default and expanded answer-format instructions allow sparse WC2026-themed
   emoji while keeping risk notes and disclaimers plain.
+- Streaming style filtering removes Unicode replacement characters so emoji
+  formatting cannot degrade into broken glyphs.
 - Explicit detailed requests receive professional briefing instructions and a larger stream cap.
 - Expanded answer-format metadata is visible to current-match Agent data.
 - Guardrails still block direct betting decisions, guaranteed outcome claims, internal permission-field leaks, and fabricated paid values.
