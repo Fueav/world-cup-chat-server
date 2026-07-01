@@ -63,12 +63,14 @@
   - `app/runtime/orchestrator.py`
 - Behavior change:
   - Add configurable bounds for message, metadata, WC2026 context, and total structured request size.
-  - Estimate provider input tokens from message plus metadata and WC2026 context.
+  - Canonicalize proxy-injected WC2026 context to the current-match permission envelope before size validation, idempotency hashing, run-plan storage, task dispatch, and provider preflight.
+  - Estimate provider input tokens from message plus metadata and canonicalized WC2026 context.
   - Treat missing provider usage as settled with already reserved tokens retained.
 - Data contract impact:
   - New additive 422 detail codes for oversized inputs.
 - Tests to add/update:
   - `test_wc2026_chat_rejects_oversized_*`
+  - `test_wc2026_context_drops_large_proxy_extras_before_size_validation`
   - `test_provider_preflight_counts_metadata_and_wc2026_context_tokens`
   - `test_structured_input_token_estimate_counts_context_not_only_message`
   - `test_provider_usage_missing_keeps_reserved_tokens_settled`

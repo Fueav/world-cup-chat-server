@@ -104,6 +104,92 @@ envctl branch-space deploy --name <owner>-world-cup-chat-server
 envctl branch-space status --name <owner>-world-cup-chat-server
 ```
 
+### Project DockerHost Release Secrets
+
+The long-lived project test environment is `chris-world-cup-chat-server`.
+DockerHost `branch-space deploy` uses one-time runtime secrets: every deploy,
+redeploy, or rollback must pass the provider and WC2026 runtime variables again.
+Do not treat a previous successful deployment as evidence that the next deploy
+will retain these values.
+
+Before deploying this project, source the local-only runtime files without
+printing their contents:
+
+```bash
+source /Users/chris/.codex-local/dockerhost/envctl_env.sh
+source /Users/chris/.codex-local/general-agent-ai/zai_env.sh
+source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
+source /Users/chris/.codex-local/world-cup-chat-server/wc2026_agent_env.sh
+```
+
+Expected variable sources:
+
+- `zai_env.sh`: `ZAI_API_KEY`, `LLM_PROVIDER`, `ZAI_MODEL`, `ZAI_BASE_URL`,
+  `ZAI_THINKING_TYPE`, `ZAI_REASONING_EFFORT`, `ZAI_TOOL_STREAM`.
+- `gemini_env.sh`: `GEMINI_API_KEY`, `EMBEDDING_API_KEY`,
+  `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`.
+- `wc2026_agent_env.sh`: `WC2026_AGENT_API_KEY` for the centralized WC2026
+  match-data API.
+
+Project runtime values that must be set for the real DockerHost smoke path:
+
+```bash
+export LLM_PROVIDER=zai
+export RAG_ENABLED=true
+export RAG_VECTOR_STORE=pgvector
+export EMBEDDING_DIM=256
+export WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1
+export WC2026_AGENT_API_TIMEOUT_S=10
+export PROVIDER_DEFAULT_RPM=60
+export PROVIDER_DEFAULT_TPM=60000
+export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=512
+export WORKER_POOL=prefork
+export WORKER_CONCURRENCY=2
+export REAPER_ENABLED=true
+```
+
+Use this shape for redeploying the stable branch-space; keep the values in local
+environment variables and pass only variable names to `envctl`:
+
+```bash
+envctl branch-space deploy --name chris-world-cup-chat-server \
+  --secret-env LLM_PROVIDER \
+  --secret-env ZAI_BASE_URL \
+  --secret-env ZAI_MODEL \
+  --secret-env ZAI_API_KEY \
+  --secret-env ZAI_THINKING_TYPE \
+  --secret-env ZAI_REASONING_EFFORT \
+  --secret-env ZAI_TOOL_STREAM \
+  --secret-env GEMINI_API_KEY \
+  --secret-env EMBEDDING_API_KEY \
+  --secret-env EMBEDDING_PROVIDER \
+  --secret-env EMBEDDING_MODEL \
+  --secret-env RAG_ENABLED \
+  --secret-env RAG_VECTOR_STORE \
+  --secret-env EMBEDDING_DIM \
+  --secret-env WC2026_AGENT_API_BASE_URL \
+  --secret-env WC2026_AGENT_API_KEY \
+  --secret-env WC2026_AGENT_API_TIMEOUT_S \
+  --secret-env PROVIDER_DEFAULT_RPM \
+  --secret-env PROVIDER_DEFAULT_TPM \
+  --secret-env PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS \
+  --secret-env WORKER_POOL \
+  --secret-env WORKER_CONCURRENCY \
+  --secret-env REAPER_ENABLED
+```
+
+After deployment, verify:
+
+- `envctl status --name chris-world-cup-chat-server` shows the target commit
+  and `api`, `db`, `cache` as `running health=healthy`.
+- `GET https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org/healthz`
+  returns `{"status":"ok"}`.
+- `GET https://api-chris-world-cup-chat-server.dkhost.vixmk-yo.org/readyz`
+  returns `status=ready` with provider secret, provider limiter, Redis, DB, and
+  reaper checks healthy.
+- A WC2026 chat smoke through `/api/v1/wc2026/chat?user_uuid=...` returns SSE
+  `TOKEN` events and final `RUN_COMPLETED` / `SUCCEEDED`.
+
 Pass runtime secrets with `--secret-env KEY` or `--secret-file KEY=PATH`; avoid `--secret KEY=VALUE`. Destroy disposable environments when finished:
 
 ```bash

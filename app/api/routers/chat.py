@@ -51,6 +51,20 @@ logger = get_logger(__name__)
 _WC2026_PREFIX = "/api/v1/wc2026"
 _MAX_DB_ID_LENGTH = 64
 _MAX_IDEMPOTENCY_KEY_LENGTH = 256
+_WC2026_TEAM_FIELDS = ("id", "name", "short_name")
+_WC2026_MATCH_FIELDS = (
+    "id",
+    "fd_match_id",
+    "description",
+    "kickoff_utc",
+    "match_date",
+    "stage",
+    "stage_label",
+    "group_label",
+    "status",
+    "raw_status",
+    "is_unlocked",
+)
 
 router = APIRouter(prefix=_WC2026_PREFIX, tags=["chat"])
 
@@ -114,6 +128,7 @@ async def create_chat(
         body,
         request,
         route_type,
+        wc2026_context=wc2026_context,
         settings=settings,
         user_id=user,
     )
@@ -210,7 +225,13 @@ async def create_chat(
                 "wc2026_context": wc2026_context,
             },
         )
-        payload = _build_payload(run_id, conversation.id, trace_id, body)
+        payload = _build_payload(
+            run_id,
+            conversation.id,
+            trace_id,
+            body,
+            wc2026_context=wc2026_context,
+        )
         payload["user_id"] = user
         payload["route_type"] = route_type
         if route_type == "batch":
@@ -274,6 +295,7 @@ async def _apply_provider_preflight(
     request: Request,
     route_type: str,
     *,
+    wc2026_context: dict[str, Any],
     settings: Any,
     user_id: str,
 ) -> str:
@@ -295,9 +317,7 @@ async def _apply_provider_preflight(
         estimated_input_tokens=estimate_structured_input_tokens(
             body.message,
             body.metadata or {},
-            body.wc2026_context.model_dump(mode="json", exclude_none=True)
-            if body.wc2026_context is not None
-            else {},
+            wc2026_context,
         ),
         max_output_tokens=settings.provider_default_max_output_tokens,
         route_type="realtime",
@@ -397,7 +417,54 @@ def _validate_wc2026_context(body: ChatRequest) -> dict[str, Any]:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="WC2026_MATCH_ID_MISMATCH",
         )
-    return context.model_dump(mode="json", exclude_none=True)
+    return _canonical_wc2026_context(context)
+
+
+def _canonical_wc2026_context(context: Any) -> dict[str, Any]:
+    """Keep only the WC2026 permission envelope needed by Chat Server."""
+    current_match = context.current_match
+    match: dict[str, Any] = {}
+    for field in _WC2026_MATCH_FIELDS:
+        value = getattr(current_match, field, None)
+        if value is not None:
+            match[field] = value
+    match["home"] = _canonical_wc2026_team(current_match.home)
+    match["away"] = _canonical_wc2026_team(current_match.away)
+
+    entitlements = context.entitlements
+    return {
+        "current_match_id": str(context.current_match_id).strip(),
+        "current_match": match,
+        "entitlements": {
+            "has_all": bool(getattr(entitlements, "has_all", False)),
+            "unlocked_matches": _canonical_match_id_list(
+                getattr(entitlements, "unlocked_matches", [])
+            ),
+            "locked_matches": _canonical_match_id_list(
+                getattr(entitlements, "locked_matches", [])
+            ),
+        },
+    }
+
+
+def _canonical_wc2026_team(team: Any) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    for field in _WC2026_TEAM_FIELDS:
+        value = getattr(team, field, None)
+        if value is not None:
+            output[field] = value
+    return output
+
+
+def _canonical_match_id_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    output: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and len(text) <= _MAX_DB_ID_LENGTH:
+            output.append(text)
+    return output
 
 
 def _validate_request_size(
@@ -503,7 +570,12 @@ def _conversation_lock_ttl_s(settings: Any) -> int:
 
 
 def _build_payload(
-    run_id: str, conversation_id: str, trace_id: str, body: ChatRequest
+    run_id: str,
+    conversation_id: str,
+    trace_id: str,
+    body: ChatRequest,
+    *,
+    wc2026_context: dict[str, Any],
 ) -> dict[str, Any]:
     """组装投递给 Celery 的任务载荷。"""
     return {
@@ -513,11 +585,7 @@ def _build_payload(
         "message": body.message,
         "metadata": body.metadata,
         "match_id": body.match_id,
-        "wc2026_context": body.wc2026_context.model_dump(
-            mode="json", exclude_none=True
-        )
-        if body.wc2026_context is not None
-        else None,
+        "wc2026_context": wc2026_context,
     }
 
 

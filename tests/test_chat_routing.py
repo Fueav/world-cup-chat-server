@@ -342,7 +342,7 @@ async def test_wc2026_chat_rejects_oversized_context_before_side_effects():
             raise AssertionError("repositories must not be touched")
 
     context = _wc_context()
-    context["large_context_blob"] = "x" * 33000
+    context["current_match"]["description"] = "x" * 33000
     request = SimpleNamespace(
         headers={},
         state=SimpleNamespace(trace_id="trace-oversized-context"),
@@ -363,6 +363,38 @@ async def test_wc2026_chat_rejects_oversized_context_before_side_effects():
 
     assert getattr(exc.value, "status_code", None) == 422
     assert getattr(exc.value, "detail", None) == "WC2026_CONTEXT_TOO_LARGE"
+
+
+def test_wc2026_context_drops_large_proxy_extras_before_size_validation():
+    from app.api.routers import chat
+
+    context = _wc_context("82")
+    context["full_paid_snapshot"] = {
+        "probability_model": "x" * 50000,
+        "recommendation": "y" * 50000,
+    }
+    context["current_match"]["proxy_payload"] = "z" * 50000
+    context["current_match"]["home"]["internal_metrics"] = "h" * 50000
+    body = ChatRequest(
+        match_id="82",
+        message="展示一下你这场比赛的预测。",
+        metadata={
+            "mode": "realtime",
+            "task_type": "chat",
+            "selected_match_id": "82",
+        },
+        wc2026_context=context,
+    )
+
+    normalized = chat._validate_wc2026_context(body)
+    chat._validate_request_size(body, normalized)
+
+    assert normalized["current_match_id"] == "82"
+    assert normalized["current_match"]["id"] == "82"
+    assert normalized["current_match"]["home"]["name"] == "阿根廷"
+    assert "full_paid_snapshot" not in normalized
+    assert "proxy_payload" not in normalized["current_match"]
+    assert "internal_metrics" not in normalized["current_match"]["home"]
 
 
 async def test_legacy_chat_route_is_not_available():
@@ -928,6 +960,7 @@ async def test_realtime_explicit_provider_limit_returns_429_without_run():
             ChatRequest(message="hello", metadata={"mode": "realtime"}),
             request,
             "realtime",
+            wc2026_context=_wc_context("75"),
             settings=Settings(
                 _env_file=None,
                 llm_provider="openai",
@@ -956,7 +989,10 @@ async def test_provider_preflight_counts_metadata_and_wc2026_context_tokens():
         metadata={"mode": "realtime", "blob": "m" * 900},
         wc2026_context={
             **_wc_context("75"),
-            "extra_context": "c" * 900,
+            "current_match": {
+                **_wc_context("75")["current_match"],
+                "description": "阿根廷 vs 法国 " + "c" * 900,
+            },
         },
     )
     request = SimpleNamespace(
@@ -967,6 +1003,7 @@ async def test_provider_preflight_counts_metadata_and_wc2026_context_tokens():
         body,
         request,
         "realtime",
+        wc2026_context=chat._validate_wc2026_context(body),
         settings=Settings(
             _env_file=None,
             llm_provider="openai",
@@ -1001,6 +1038,7 @@ async def test_auto_mode_provider_limit_degrades_to_batch():
         body,
         request,
         "realtime",
+        wc2026_context=_wc_context("75"),
         settings=Settings(
             _env_file=None,
             llm_provider="openai",

@@ -25,7 +25,8 @@
 - User/operator workflow:
   - Normal WC2026 chat remains asynchronous: POST accepted, then SSE/WS stream and run-status recovery.
   - If deterministic policy blocks generated output, the user must see the safe response in normal answer content, not only in an `ERROR` event payload.
-  - Oversized message, metadata, or `wc2026_context` is rejected before DB writes, locks, queues, or provider checks.
+  - Oversized message, metadata, or canonicalized `wc2026_context` is rejected before DB writes, locks, queues, or provider checks.
+  - Proxy-injected WC2026 context may contain extra upstream fields; Chat Server keeps only the current-match permission envelope needed for routing, binding, preflight, and Agent instructions before applying context-size limits.
 - State model:
   - Realtime runner failures outside orchestration converge to `FAILED` with sanitized `ERROR` and `RUN_COMPLETED` events.
   - Provider usage missing keeps the already reserved quota consumed and records `usage_missing`; it is not treated as a free successful refund.
@@ -49,8 +50,9 @@
   - `/api/v1/wc2026/chat` keeps the same accepted response shape.
   - `/api/v1/wc2026/chat/stream/{run_id}` and WS equivalent keep event payload shape and add per-run connection limiting.
 - Request fields and validation:
-  - `message`, `metadata`, `wc2026_context`, and total structured request size are bounded by settings.
-  - Provider admission estimates include message, metadata, and WC2026 context.
+  - `message`, `metadata`, canonicalized `wc2026_context`, and total structured request size are bounded by settings.
+  - Unknown extra fields in proxy-injected `wc2026_context` are dropped before size validation, idempotency hashing, run-plan storage, task dispatch, and provider admission.
+  - Provider admission estimates include message, metadata, and canonicalized WC2026 context.
 - Response/envelope fields and types:
   - Guardrail-refused output final content is visible through `TOKEN` concatenation and `RUN_COMPLETED.data.content`.
   - Runner-level failures use sanitized error codes such as `REALTIME_RUNNER_FAILED` or `RUN_TIMEOUT`.
