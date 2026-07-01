@@ -3,7 +3,7 @@
 职责:
 - 鉴权:WC2026 chat-flow 从 URL user_uuid 取 user_id,其他受保护路径保留
   Authorization Bearer 或 X-API-Key。
-- 限流:对写入类路径按 user_id 做滑动窗口限流,超限 429。
+- 限流:对写入类路径按 route + user_id hash 做滑动窗口限流,超限 429。
 - trace_id:每请求生成或透传 X-Trace-Id,注入日志上下文并回写响应头。
 
 中间件保持无状态:仅依赖请求头与 app.state 上的共享单例(限流器)。
@@ -117,7 +117,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """限流中间件:对写入类路径按 user_id 滑动窗口限流。"""
+    """限流中间件:对写入类路径按 route + user_id hash 滑动窗口限流。"""
 
     async def dispatch(self, request: Request, call_next) -> Response:
         """超过阈值返回 429,并附带 Retry-After 头。"""
@@ -128,13 +128,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if limiter is None or not user_id:
             # 限流器未就绪或匿名:不阻断,交由下游处理
             return await call_next(request)
-        result = await limiter.check(user_id)
+        result = await limiter.check(user_id, route=request.url.path)
         if not result.allowed:
             log_with_fields(
                 logger,
                 logging.WARNING,
                 "请求被限流",
-                user_id=user_id,
+                route=getattr(result, "route", request.url.path),
+                identity_hash=getattr(result, "identity_hash", ""),
                 limit=result.limit,
             )
             return _rate_limit_response(result)

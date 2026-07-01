@@ -50,7 +50,7 @@ X-API-Key: <key>
 浏览器 `OPTIONS` preflight 会在鉴权前由 CORS 中间件处理;真正的 `POST /chat` 仍必须携带 `Authorization: Bearer <token>` 或 `X-API-Key`。
 
 ### 限流
-仅对 `POST /chat` 限流(按 user_id 滑动窗口,默认 **60 次/分钟**)。超限返回 **429**:
+仅对 `POST /chat` 限流(按 route + user_id 滑动窗口,默认 **60 次/分钟**)。超限返回 **429**:
 ```
 HTTP 429
 Retry-After: <秒>
@@ -58,6 +58,7 @@ X-RateLimit-Limit: 60
 X-RateLimit-Remaining: 0
 ```
 正常响应也会带 `X-RateLimit-Limit` / `X-RateLimit-Remaining`。
+该入口限流是 best-effort 防滥用保护;Redis 异常时会降级放行并打告警/指标。真实 LLM provider 的 RPM/TPM 与成本保护由独立 provider limiter 执行,不依赖这里的 fail-open 行为。
 
 ### 统一错误体
 ```json

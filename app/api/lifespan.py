@@ -3,7 +3,7 @@
 在 FastAPI lifespan 中初始化与释放共享单例:
 - redis 客户端(限流 + 事件总线后端)
 - event_bus(优先使用 bus 作者提供的 Redis 实现,缺失则降级)
-- rate_limiter(基于上面的 redis)
+- rate_limiter(基于上面的 redis + metrics)
 
 所有单例挂在 app.state,供依赖与中间件读取,保证 API 层无状态。
 依赖的外部符号(由 bus 作者提供,二选一即可):
@@ -101,7 +101,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.secret_provider = secret_provider
     app.state.provider_key_pool = provider_key_pool
     app.state.provider_limiter = provider_limiter
-    app.state.rate_limiter = RateLimiter(redis, settings.rate_limit_per_min)
+    app.state.rate_limiter = RateLimiter(
+        redis,
+        settings.rate_limit_per_min,
+        metrics=metrics,
+    )
     app.state.conversation_lock = ConversationLock(redis_client=redis)
     app.state.stream_connection_lock = None
     app.state.stream_connection_counts = {}
