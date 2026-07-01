@@ -22,7 +22,7 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     prompt = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
 
     assert DEFAULT_CHAT_BEHAVIOR_POLICY.version in prompt
-    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v4")
+    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v5")
     assert "World Cup Match Forecast Chat Server" in prompt
     assert "Agent模型的解释器" in prompt
     assert "不是看球嘉宾" in prompt
@@ -47,8 +47,17 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     assert "工具或中心化数据未提供" in prompt
     assert "不能编造 X/Y/Z" in prompt
     assert "≤1.5s" in prompt
-    assert "默认 3-5 条短要点" in prompt
-    assert "不要默认使用 Markdown 表格" in prompt
+    assert "默认短答范式固定为 4 行以内" in prompt
+    assert "结论:" in prompt
+    assert "关键数据:" in prompt
+    assert "依据:" in prompt
+    assert "状态/风险:" in prompt
+    assert "默认回答控制在 420 个中文字符左右" in prompt
+    assert "不得默认输出 Markdown 表格" in prompt
+    assert "全量 9 个维度列表" in prompt
+    assert "Top5 比分列表" in prompt
+    assert "只有用户明确说详细、展开、完整、全量、表格" in prompt
+    assert "未解锁、数据不足或中心化数据不可用时使用短答范式" in prompt
     assert "先给结论" in prompt
     assert "no-bet" in prompt
     assert "Past performance does not guarantee future results" in prompt
@@ -449,5 +458,5 @@ def test_streaming_output_guardrail_clamps_verbose_default_answer():
         outputs.append(tail)
 
     safe_text = "".join(outputs)
-    assert len(safe_text) <= 1000
+    assert len(safe_text) <= 640
     assert safe_text[-1] in ".。!！?？;；:：)]}）】」』\"'`"

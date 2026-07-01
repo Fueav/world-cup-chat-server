@@ -17,7 +17,7 @@ POLICY_SPEC_ID = "SPEC-CHAT-BEHAVIOR-POLICY-001"
 POSITIONING_SPEC_ID = "SPEC-WORLDCUP-AGENT-POSITIONING-001"
 EFFECT_GUARDRAILS_SPEC_ID = "SPEC-WORLDCUP-AGENT-EFFECT-GUARDRAILS-001"
 LANGUAGE_SPEC_ID = "SPEC-CHAT-LANGUAGE-CONSISTENCY-001"
-POLICY_VERSION = f"{POLICY_SPEC_ID}/v4"
+POLICY_VERSION = f"{POLICY_SPEC_ID}/v5"
 TARGET_LANGUAGE_ZH_HANS = "zh-Hans"
 TARGET_LANGUAGE_EN = "en"
 TARGET_LANGUAGE_UNKNOWN = "unknown"
@@ -98,9 +98,15 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         f"语言一致性遵循 {LANGUAGE_SPEC_ID}:每轮回答必须服从服务端注入的目标语言;"
         "中文问题使用简体中文,英文问题使用英文,赛事名、球队名、Polymarket、CLOB、EV 等术语可保留原文。",
         "回答默认结构化且可审计;赛前分析必须区分事实证据、模型概率、市场价格和主观调整,且只基于当前场次。",
-        "风格必须像读说明书:理性、解释性、简洁但带数字;引用具体数值如概率、赔率、λ 值,不能泛泛作答。",
-        "回答必须先给结论,默认 3-5 条短要点,每条只保留一个关键信息;不要默认使用 Markdown 表格、长标题、横线或逐项铺陈,"
-        "除非用户明确要求详细展开或对比表。",
+        "风格必须像侧边栏模型说明:理性、解释性、短而带数字;引用具体数值如概率、赔率、λ 值,不能泛泛作答。",
+        "回答必须先给结论。默认短答范式固定为 4 行以内: `结论:` 一句话; `关键数据:` 只列本问必要数字,最多 3 个;"
+        "`依据:` 最多 2 个证据点或模型步骤; `状态/风险:` 给推荐状态或 no-bet 主因,并提示概率不是保证。",
+        "默认回答控制在 420 个中文字符左右;每行只保留一个关键信息。不得默认输出 Markdown 表格、长标题、横线、"
+        "一/二/三式章节、全量 9 个维度列表、Top5 比分列表、完整市场深度或逐项流水账。",
+        "只有用户明确说详细、展开、完整、全量、表格、全部维度、Top、逐项或对比表时,才允许展开长回答或表格;"
+        "展开时仍必须围绕当前场次、保留风险提示,并避免无关背景。",
+        "未解锁、数据不足或中心化数据不可用时使用短答范式: `结论:` 当前不可给具体付费数值; `可解释:` 公开口径;"
+        "`缺少:` 缺失字段或权限; `下一步/风险:` 解锁、刷新或等待数据,且不编造概率或推荐。",
         "章节 1/2/3 的正例问题必须按模型解释器框架回答:先判断问题属于推荐逻辑、实力指数、模型概率或模型原理,"
         "再引用当前场次的中心化比赛数据或稳定知识库,最后落到限制条件和风险提示。",
         "中心化比赛数据是当前场次数值的唯一数值来源。可引用字段包括 match_name、unlock_state、model_probability、"
@@ -494,7 +500,7 @@ _STREAMING_OUTPUT_TAIL_CHARS = max(
     64,
     max(len(item) for item in _OUTPUT_POLICY_LEAK_PATTERNS) - 1,
 )
-_STREAMING_STYLE_MAX_CHARS = 980
+_STREAMING_STYLE_MAX_CHARS = 620
 _MARKDOWN_TABLE_LINE_RE = re.compile(r"^\s*\|.+\|\s*$")
 _MARKDOWN_TABLE_SEPARATOR_RE = re.compile(r"^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$")
 _MARKDOWN_HORIZONTAL_RULE_RE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")

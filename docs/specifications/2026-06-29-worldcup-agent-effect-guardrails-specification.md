@@ -173,13 +173,13 @@
   - Prompt includes recommendation trigger rules: model probability must exceed Polymarket implied probability by at least 4 percentage points and odds must be in the 1.70-2.40 range before a recommendation can be explained.
   - Prompt includes Section 2 answer frameworks for recommendation reason, odds/no-recommendation reason, strength-index calculation, weight rationale, lineup repricing, expected-goals/win-rate values, and model-principle coefficients.
   - Prompt includes strength-index, expected-goals/probability, model-principle, and style constraints from the product document.
-  - Prompt enforces concise answer style: conclusion first, 3-5 short bullets by default, and no default Markdown tables or long section scaffolding unless the user explicitly asks for detail.
+  - Prompt enforces concise side-panel answer style: conclusion first, four short fields by default (`结论`, `关键数据`, `依据`, `状态/风险`), no default Markdown tables, long section scaffolding, full 9D lists, Top5 score lists, market-depth dumps, or step-by-step report prose unless the user explicitly asks for detail, expansion, a table, all dimensions, or a comparison.
   - Streaming output converts default Markdown table rows into plain short lines, removes table/horizontal-rule scaffolding, and clamps verbose default answers without weakening hidden-instruction, language, direct-betting, guaranteed-profit, or truncation guardrails.
   - Input guardrail refuses direct betting-decision prompts, guaranteed-outcome prompts, locked-content bypass prompts, model-scope-out-of-bounds prompts, and platform/account support prompts.
   - Output guardrail blocks direct buy/sell advice and guaranteed-profit/outcome language.
   - Allowed market, recommendation, EV, odds, or Polymarket explanations receive a deterministic risk footer when the model omitted one.
   - Long model answers that look cut off before a terminal sentence are treated as `TRUNCATED_OUTPUT` failures rather than successful final answers.
-  - Live answer-effect evaluation flags verbose answers and default Markdown tables as deterministic style failures.
+  - Live answer-effect evaluation flags verbose answers over the default 700-character budget and default Markdown tables as deterministic style failures.
   - DockerHost API and worker services keep `ZAI_REASONING_EFFORT` and provider max-output-token defaults aligned, and production-config verification fails on drift.
 - Edge cases:
   - "这个模型准不准？" remains allowed but must answer with model limitations rather than a fixed accuracy claim.

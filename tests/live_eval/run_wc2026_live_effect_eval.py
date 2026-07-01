@@ -27,7 +27,7 @@ SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
 )
-DEFAULT_MAX_ANSWER_CHARS = 1200
+DEFAULT_MAX_ANSWER_CHARS = 700
 MARKDOWN_TABLE_RE = re.compile(r"^\s*\|.+\|\s*$", re.MULTILINE)
 
 
