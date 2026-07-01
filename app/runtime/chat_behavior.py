@@ -705,6 +705,30 @@ def build_language_instruction(target_language: str) -> str:
     )
 
 
+def build_answer_format_instruction(target_language: str) -> str:
+    """Build a run-scoped concise side-panel answer contract."""
+    normalized = normalize_target_language(target_language)
+    if normalized == TARGET_LANGUAGE_EN:
+        return (
+            "Answer format for this turn: default to a concise side-panel answer,"
+            " no more than 4 short lines and about 650 English characters. Use these"
+            " fields by default: Conclusion, Key data, Basis, Status/Risk. Include"
+            " only the numbers needed for the user's question. Do not default to"
+            " Markdown tables, long headings, numbered report sections, full 9D lists,"
+            " Top5 score lists, market-depth dumps, or step-by-step report prose."
+            " Expand only when the user explicitly asks for detail, expansion, a full"
+            " answer, a table, all dimensions, Top items, item-by-item analysis, or a"
+            " comparison table."
+        )
+    return (
+        "本轮回答格式:默认必须采用侧边栏短答,4 行以内,约 420 个中文字符。"
+        "默认字段为 `结论:`、`关键数据:`、`依据:`、`状态/风险:`。"
+        "只摘取本问必要数字,不得默认输出 Markdown 表格、长标题、一/二/三式报告章节、"
+        "全量 9 个维度列表、Top5 比分列表、完整市场深度或逐项流水账。"
+        "只有用户明确要求详细、展开、完整、全量、表格、全部维度、Top、逐项或对比表时才展开。"
+    )
+
+
 def finalize_assistant_answer(
     answer: str, *, target_language: str = TARGET_LANGUAGE_UNKNOWN
 ) -> str:
@@ -1026,7 +1050,14 @@ def _clip_to_terminal_text(text: str) -> str:
     best = max(stripped.rfind(char) for char in boundary_chars)
     if best >= max(120, int(len(stripped) * 0.6)):
         return stripped[: best + 1]
-    return f"{stripped.rstrip(' ,，、:：;；-')}."
+    line_boundary = stripped.rfind("\n")
+    if line_boundary >= max(120, int(len(stripped) * 0.45)):
+        return f"{stripped[:line_boundary].rstrip()}\n更多细节请要求展开。"
+    soft_boundary_chars = "，,、 "
+    soft = max(stripped.rfind(char) for char in soft_boundary_chars)
+    if soft >= max(120, int(len(stripped) * 0.55)):
+        return f"{stripped[:soft].rstrip(' ,，、:：;；-')}。"
+    return f"{stripped.rstrip(' ,，、:：;；-')}。"
 
 
 def _markdown_table_line_to_text(line: str) -> str:

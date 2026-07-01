@@ -51,6 +51,7 @@ from app.runtime.chat_behavior import (
     GuardrailAction,
     GuardrailDecision,
     StreamingOutputGuardrail,
+    build_answer_format_instruction,
     build_language_instruction,
     detect_target_language,
     evaluate_user_message,
@@ -364,6 +365,7 @@ class AgentOrchestrator:
             retrieval_top_k=self._deps.settings.retrieval_top_k,
             target_language=target_language,
             language_instruction=build_language_instruction(target_language),
+            answer_format_instruction=build_answer_format_instruction(target_language),
             wc2026_context=_clean_wc2026_context(wc2026_context),
             wc2026_agent_data=self._deps.wc2026_agent_data,
             wc2026_context_instruction=build_wc2026_context_instruction(

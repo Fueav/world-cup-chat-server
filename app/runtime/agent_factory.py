@@ -78,6 +78,7 @@ class AgentDeps:
     retrieval_top_k: int = 5
     target_language: str = "unknown"
     language_instruction: str = ""
+    answer_format_instruction: str = ""
     wc2026_context: dict[str, Any] | None = None
     wc2026_agent_data: Any | None = None
     wc2026_context_instruction: str = ""
@@ -105,6 +106,11 @@ def build_agent(model: Model) -> Agent[AgentDeps, str]:
     def run_wc2026_context_policy(ctx: RunContext[AgentDeps]) -> str:
         """Inject current-match permission context for WC2026 runs."""
         return ctx.deps.wc2026_context_instruction
+
+    @agent.instructions
+    def run_answer_format_policy(ctx: RunContext[AgentDeps]) -> str:
+        """Inject the side-panel answer contract close to each run."""
+        return ctx.deps.answer_format_instruction
 
     @agent.tool
     async def search_knowledge(

@@ -27,6 +27,7 @@ from app.runtime.agent_factory import (
 )
 from app.runtime.chat_behavior import (
     TARGET_LANGUAGE_ZH_HANS,
+    build_answer_format_instruction,
     build_language_instruction,
 )
 
@@ -249,6 +250,32 @@ async def test_agent_injects_run_scoped_language_instruction():
     serialized_messages = repr(seen_messages)
     assert "本轮目标语言: zh-Hans" in serialized_messages
     assert "必须使用简体中文回答" in serialized_messages
+
+
+async def test_agent_injects_run_scoped_answer_format_instruction():
+    seen_messages: list[Any] = []
+
+    def function(messages, _info):
+        seen_messages.extend(messages)
+        return ModelResponse(parts=[TextPart(content="收到。")])
+
+    agent = build_agent(FunctionModel(function=function))
+    deps = AgentDeps(
+        retriever=_SpyRetriever(),
+        tool_router=_NoopToolRouter(),
+        target_language=TARGET_LANGUAGE_ZH_HANS,
+        answer_format_instruction=build_answer_format_instruction(
+            TARGET_LANGUAGE_ZH_HANS
+        ),
+    )
+
+    await agent.run("当前比赛为什么没有推荐投注?", deps=deps)
+
+    serialized_messages = repr(seen_messages)
+    assert "侧边栏短答" in serialized_messages
+    assert "4 行以内" in serialized_messages
+    assert "结论:" in serialized_messages
+    assert "全量 9 个维度列表" in serialized_messages
 
 
 async def test_agent_exposes_current_match_wc2026_tool_without_match_id_argument():

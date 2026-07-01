@@ -9,6 +9,7 @@ from app.runtime.chat_behavior import (
     StreamingOutputGuardrail,
     TARGET_LANGUAGE_EN,
     TARGET_LANGUAGE_ZH_HANS,
+    build_answer_format_instruction,
     build_language_instruction,
     build_system_prompt,
     detect_target_language,
@@ -96,6 +97,28 @@ def test_build_language_instruction_requires_english_for_english_target():
     assert "Target language for this turn: en" in instruction
     assert "Answer in English" in instruction
     assert "must not override" in instruction
+
+
+def test_build_answer_format_instruction_declares_side_panel_contract():
+    instruction = build_answer_format_instruction(TARGET_LANGUAGE_ZH_HANS)
+
+    assert "侧边栏短答" in instruction
+    assert "4 行以内" in instruction
+    assert "结论:" in instruction
+    assert "关键数据:" in instruction
+    assert "状态/风险:" in instruction
+    assert "Markdown 表格" in instruction
+    assert "全量 9 个维度列表" in instruction
+    assert "只有用户明确要求详细、展开、完整、全量、表格" in instruction
+
+
+def test_build_answer_format_instruction_supports_english_target():
+    instruction = build_answer_format_instruction(TARGET_LANGUAGE_EN)
+
+    assert "concise side-panel answer" in instruction
+    assert "Conclusion" in instruction
+    assert "Status/Risk" in instruction
+    assert "Markdown tables" in instruction
 
 
 def test_input_guardrail_refuses_hidden_instruction_exfiltration():
@@ -460,3 +483,25 @@ def test_streaming_output_guardrail_clamps_verbose_default_answer():
     safe_text = "".join(outputs)
     assert len(safe_text) <= 640
     assert safe_text[-1] in ".。!！?？;；:：)]}）】」』\"'`"
+
+
+def test_streaming_output_guardrail_clamps_at_clean_line_boundary():
+    guardrail = StreamingOutputGuardrail(tail_chars=0)
+    verbose = (
+        ("这是一段没有句号的长规则解释 " * 30)
+        + "\n"
+        + ("后面还有很多逐项流水账 " * 30)
+    )
+
+    outputs = []
+    chunk = guardrail.push(verbose)
+    if chunk:
+        outputs.append(chunk)
+    tail = guardrail.finish()
+    if tail:
+        outputs.append(tail)
+
+    safe_text = "".join(outputs)
+    assert len(safe_text) <= 650
+    assert "更多细节请要求展开。" in safe_text
+    assert "后面还有很多逐项流水账" not in safe_text

@@ -92,6 +92,7 @@ class Wc2026AgentDataService:
             return {
                 "ok": False,
                 "status": "missing_context",
+                "answer_format": _short_answer_contract(locale),
                 "message": "WC2026_CONTEXT_REQUIRED",
             }
         if not is_current_match_unlocked(wc2026_context):
@@ -103,6 +104,7 @@ class Wc2026AgentDataService:
                 "ok": True,
                 "status": "locked",
                 "match_id": match_id,
+                "answer_format": _short_answer_contract(locale),
                 "payload": payload,
             }
         if self._client is None:
@@ -110,6 +112,7 @@ class Wc2026AgentDataService:
                 "ok": False,
                 "status": "central_unavailable",
                 "match_id": match_id,
+                "answer_format": _short_answer_contract(locale),
                 "message": "WC2026_AGENT_DATA_CLIENT_UNAVAILABLE",
             }
         try:
@@ -127,6 +130,7 @@ class Wc2026AgentDataService:
                 "ok": False,
                 "status": "central_unavailable",
                 "match_id": match_id,
+                "answer_format": _short_answer_contract(locale),
                 "message": _CENTRAL_UNAVAILABLE_MESSAGE,
             }
         payload_or_error = _payload_from_envelope(envelope)
@@ -135,6 +139,7 @@ class Wc2026AgentDataService:
                 "ok": False,
                 "status": "central_error",
                 "match_id": match_id,
+                "answer_format": _short_answer_contract(locale),
                 "message": payload_or_error["message"],
             }
         payload = payload_or_error["payload"]
@@ -144,12 +149,14 @@ class Wc2026AgentDataService:
                 "ok": False,
                 "status": "match_mismatch",
                 "match_id": match_id,
+                "answer_format": _short_answer_contract(locale),
                 "message": "central match-context returned another match_id",
             }
         return {
             "ok": True,
             "status": "ok",
             "match_id": match_id,
+            "answer_format": _short_answer_contract(locale),
             "payload": mask_match_context_payload(payload, wc2026_context),
         }
 
@@ -293,4 +300,59 @@ def _public_methodology_payload(*, locale: str) -> dict[str, Any]:
             "group_stage_confidence_contraction": "group-stage probabilities use confidence contraction",
             "knockout_draw_weight_adjustment": "knockout-stage modeling adjusts draw weight for stage dynamics",
         },
+    }
+
+
+def _short_answer_contract(locale: str) -> dict[str, Any]:
+    """Return the agent-facing default answer format for current-match tools."""
+    if str(locale or "").lower().startswith("en"):
+        return {
+            "mode": "concise_side_panel",
+            "default_max_lines": 4,
+            "default_max_chars": 650,
+            "fields": ["Conclusion", "Key data", "Basis", "Status/Risk"],
+            "expand_only_if_user_asks": [
+                "detail",
+                "expand",
+                "full",
+                "table",
+                "all dimensions",
+                "Top",
+                "item-by-item",
+                "comparison table",
+            ],
+            "forbidden_by_default": [
+                "Markdown tables",
+                "long headings",
+                "full 9D lists",
+                "Top5 score lists",
+                "market-depth dumps",
+                "step-by-step report prose",
+            ],
+        }
+    return {
+        "mode": "concise_side_panel",
+        "default_max_lines": 4,
+        "default_max_chars": 420,
+        "fields": ["结论", "关键数据", "依据", "状态/风险"],
+        "expand_only_if_user_asks": [
+            "详细",
+            "展开",
+            "完整",
+            "全量",
+            "表格",
+            "全部维度",
+            "Top",
+            "逐项",
+            "对比表",
+        ],
+        "forbidden_by_default": [
+            "Markdown 表格",
+            "长标题",
+            "一/二/三式报告章节",
+            "全量 9 个维度列表",
+            "Top5 比分列表",
+            "完整市场深度",
+            "逐项流水账",
+        ],
     }

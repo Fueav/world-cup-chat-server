@@ -69,6 +69,8 @@ async def test_locked_context_does_not_call_paid_match_context():
     assert result["ok"] is True
     assert result["status"] == "locked"
     assert result["match_id"] == "75"
+    assert result["answer_format"]["mode"] == "concise_side_panel"
+    assert result["answer_format"]["fields"] == ["结论", "关键数据", "依据", "状态/风险"]
     assert result["payload"]["access"]["viewer_scope"] == "locked"
 
 
@@ -84,6 +86,9 @@ async def test_unlocked_context_calls_current_match_only_and_masks_payload():
     assert result["ok"] is True
     assert result["status"] == "ok"
     assert result["match_id"] == "75"
+    assert result["answer_format"]["mode"] == "concise_side_panel"
+    assert result["answer_format"]["default_max_chars"] == 420
+    assert "Markdown 表格" in result["answer_format"]["forbidden_by_default"]
     assert result["payload"]["probability_model"]["wdl_probability"]["home"] == 62.1
 
 
@@ -110,6 +115,7 @@ async def test_build_service_without_base_url_returns_client_unavailable():
 
     assert result["ok"] is False
     assert result["status"] == "central_unavailable"
+    assert result["answer_format"]["mode"] == "concise_side_panel"
     assert result["message"] == "WC2026_AGENT_DATA_CLIENT_UNAVAILABLE"
 
 
