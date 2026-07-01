@@ -30,41 +30,65 @@ app/db/migrations/2026-06-30-wc2026-conversation-match-binding.sql
 
 ```bash
 source /Users/chris/.codex-local/dockerhost/envctl_env.sh
-source /Users/chris/.codex-local/world-cup-chat-server/zai_env.sh
-source /Users/chris/.codex-local/world-cup-chat-server/gemini_env.sh
+source /Users/chris/.codex-local/general-agent-ai/zai_env.sh
+source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
+source /Users/chris/.codex-local/world-cup-chat-server/wc2026_agent_env.sh
 
 export LLM_PROVIDER=zai
-export ZAI_MODEL=glm-5.2
-export ZAI_THINKING_TYPE=disabled
-export ZAI_REASONING_EFFORT=low
-export ZAI_TOOL_STREAM=true
 export RAG_ENABLED=true
 export RAG_VECTOR_STORE=pgvector
-export EMBEDDING_PROVIDER=gemini
-export EMBEDDING_MODEL=gemini-embedding-2
 export EMBEDDING_DIM=256
+export WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1
+export WC2026_AGENT_API_TIMEOUT_S=10
 export PROVIDER_DEFAULT_RPM=60
 export PROVIDER_DEFAULT_TPM=60000
 export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=8192
 export WORKER_POOL=prefork
 export WORKER_CONCURRENCY=2
 export REAPER_ENABLED=true
-export WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1
-export WC2026_AGENT_API_TIMEOUT_S=10
 
 envctl up \
   --name chris-world-cup-chat-server \
   --git-url git@github.com:Fueav/world-cup-chat-server.git \
   --git-ref <branch-or-sha> \
   --git-subdir dockerhost \
+  --secret-env LLM_PROVIDER \
+  --secret-env ZAI_BASE_URL \
+  --secret-env ZAI_MODEL \
   --secret-env ZAI_API_KEY \
+  --secret-env ZAI_THINKING_TYPE \
+  --secret-env ZAI_REASONING_EFFORT \
+  --secret-env ZAI_TOOL_STREAM \
   --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+  --secret-env EMBEDDING_API_KEY \
+  --secret-env EMBEDDING_PROVIDER \
+  --secret-env EMBEDDING_MODEL \
+  --secret-env RAG_ENABLED \
+  --secret-env RAG_VECTOR_STORE \
+  --secret-env EMBEDDING_DIM \
+  --secret-env WC2026_AGENT_API_BASE_URL \
+  --secret-env WC2026_AGENT_API_KEY \
+  --secret-env WC2026_AGENT_API_TIMEOUT_S \
+  --secret-env PROVIDER_DEFAULT_RPM \
+  --secret-env PROVIDER_DEFAULT_TPM \
+  --secret-env PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS \
+  --secret-env WORKER_POOL \
+  --secret-env WORKER_CONCURRENCY \
+  --secret-env REAPER_ENABLED
 ```
 
 如果目标中心化 WC2026 环境允许无 key 内网直连，可以省略
 `--secret-env WC2026_AGENT_API_KEY`。当前 DockerHost dev 环境走
 `https://moss-dev.moss.site/api/v1`，需要该 secret。
+
+DockerHost 对 branch-space/redeploy 的 runtime 注入按一次性处理。不要只
+`export` 本地变量，也不要只传 provider key；每次 deploy、redeploy、rollback
+都要重新传入上面完整的 `--secret-env` 列表。部署后确认真实远端值：
+
+```bash
+envctl config --name chris-world-cup-chat-server --service api \
+  | rg '^PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS="8192"$'
+```
 
 For correctness-first smoke fallback:
 

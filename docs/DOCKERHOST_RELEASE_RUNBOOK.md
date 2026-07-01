@@ -76,6 +76,8 @@ app/db/migrations/2026-06-30-wc2026-conversation-match-binding.sql
 ## DockerHost Release CLI（默认 dry-run）
 
 `scripts/dockerhost_release.py` 是本 runbook 的辅助 CLI。默认只生成有序 plan 和脱敏 audit JSON,不会调用真实 `git`, `envctl` 或 `curl`。只有显式加入 `--execute` 时,CLI 才会执行外部命令。
+下列项目真实部署示例默认已按第 4 节加载本地 env 文件并定义
+`WC2026_DOCKERHOST_SECRET_ENVS`;不要把示例简化成只传 provider key。
 
 dry-run deploy plan:
 
@@ -85,8 +87,7 @@ dry-run deploy plan:
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --base-url "$BASE_URL" \
-  --secret-env ZAI_API_KEY \
-  --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file> \
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}" \
   --audit-json /tmp/dockerhost-release-plan.json
 ```
 
@@ -98,14 +99,14 @@ dry-run deploy plan:
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --base-url "$BASE_URL" \
-  --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY \
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}" \
   --execute \
   --audit-json /tmp/dockerhost-release-audit.json
 ```
 
-如果目标中心化 WC2026 环境要求 `wc-api-key`,在上述命令中额外加入
-`--secret-env WC2026_AGENT_API_KEY`。不要求 key 的内网入口可以不传。
+`WC2026_DOCKERHOST_SECRET_ENVS` 默认包含 `WC2026_AGENT_API_KEY`,因为当前
+DockerHost dev 环境需要中心化 WC2026 数据接口 key。只有目标入口明确允许无
+key 内网直连时,才从数组里移除这一项。
 
 其他 action:
 
@@ -115,13 +116,13 @@ dry-run deploy plan:
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --base-url "$BASE_URL" \
-  --secret-env ZAI_API_KEY
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}"
 
 .venv/bin/python scripts/dockerhost_release.py rollback --previous-sha "$PREVIOUS_SHA" \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --base-url "$BASE_URL" \
-  --secret-env ZAI_API_KEY
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}"
 
 .venv/bin/python scripts/dockerhost_release.py smoke \
   --name "$ENV_NAME" \
@@ -148,37 +149,70 @@ Secret hygiene:
 
 ## 4. Secret 注入
 
-优先使用 `--secret-env`。这要求 secret 值已在当前私有 shell 环境中存在,但不要用 `env`, `printenv`, `set`, `history` 或日志输出它们。
+优先使用 `--secret-env`。这要求 secret 值和 runtime 变量已在当前私有
+shell 环境中存在,但不要用 `env`, `printenv`, `set`, `history` 或日志输出它们。
+本项目的真实 WC2026 DockerHost 部署不要只传 provider key;branch-space、
+redeploy、rollback 都按一次性 runtime 注入处理,必须复用同一套完整列表。
 
 ```bash
+source /Users/chris/.codex-local/dockerhost/envctl_env.sh
+source /Users/chris/.codex-local/general-agent-ai/zai_env.sh
+source /Users/chris/.codex-local/general-agent-ai/gemini_env.sh
+source /Users/chris/.codex-local/world-cup-chat-server/wc2026_agent_env.sh
+
 export LLM_PROVIDER=zai
 export RAG_ENABLED=true
 export RAG_VECTOR_STORE=pgvector
-export EMBEDDING_PROVIDER=gemini
-export EMBEDDING_MODEL=gemini-embedding-2
+export EMBEDDING_DIM=256
 export WC2026_AGENT_API_BASE_URL=https://moss-dev.moss.site/api/v1
 export WC2026_AGENT_API_TIMEOUT_S=10
+export PROVIDER_DEFAULT_RPM=60
+export PROVIDER_DEFAULT_TPM=60000
+export PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=8192
+export WORKER_POOL=prefork
+export WORKER_CONCURRENCY=2
+export REAPER_ENABLED=true
+
+WC2026_DOCKERHOST_SECRET_ENVS=(
+  --secret-env LLM_PROVIDER
+  --secret-env ZAI_BASE_URL
+  --secret-env ZAI_MODEL
+  --secret-env ZAI_API_KEY
+  --secret-env ZAI_THINKING_TYPE
+  --secret-env ZAI_REASONING_EFFORT
+  --secret-env ZAI_TOOL_STREAM
+  --secret-env GEMINI_API_KEY
+  --secret-env EMBEDDING_API_KEY
+  --secret-env EMBEDDING_PROVIDER
+  --secret-env EMBEDDING_MODEL
+  --secret-env RAG_ENABLED
+  --secret-env RAG_VECTOR_STORE
+  --secret-env EMBEDDING_DIM
+  --secret-env WC2026_AGENT_API_BASE_URL
+  --secret-env WC2026_AGENT_API_KEY
+  --secret-env WC2026_AGENT_API_TIMEOUT_S
+  --secret-env PROVIDER_DEFAULT_RPM
+  --secret-env PROVIDER_DEFAULT_TPM
+  --secret-env PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS
+  --secret-env WORKER_POOL
+  --secret-env WORKER_CONCURRENCY
+  --secret-env REAPER_ENABLED
+)
 
 envctl up \
   --name "$ENV_NAME" \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
-  --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}"
 ```
 
-当平台或操作习惯要求文件注入时,使用 `--secret-file KEY=PATH` 指向仓库外的私有文件。路径可以进入命令记录,文件内容不可以。
+当平台或操作习惯要求文件注入时,使用 `--secret-file KEY=PATH` 指向仓库外的私有文件。路径可以进入命令记录,文件内容不可以。使用文件注入时,只替换完整列表中对应的 `--secret-env KEY`;其他 runtime 变量仍然复用 `WC2026_DOCKERHOST_SECRET_ENVS`。
 
 ```bash
-envctl up \
-  --name "$ENV_NAME" \
-  --git-url "$GIT_URL" \
-  --git-ref "$GIT_REF" \
-  --git-subdir dockerhost \
-  --secret-file ZAI_API_KEY=<path-to-private-zai-key-file> \
-  --secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file>
+# Replace these two entries in the full deploy command when file injection is required:
+--secret-file ZAI_API_KEY=<path-to-private-zai-key-file>
+--secret-file GEMINI_API_KEY=<path-to-private-gemini-key-file>
 ```
 
 需要用多把 Z.AI key 提升并发时,不要把 key 写成多个环境变量,使用仓库外私有文件并通过 DockerHost secret-file 注入。最简单格式是一行一个 key;也可以使用 provider-neutral JSON key pool 文件。`PROVIDER_KEY_POOL_SCOPE=key` 表示每把 key 有独立 RPM/TPM 桶,aggregate 桶仍作为总保护。
@@ -187,29 +221,18 @@ envctl up \
 export LLM_PROVIDER=zai
 export PROVIDER_KEY_POOL_SCOPE=key
 
-envctl up \
-  --name "$ENV_NAME" \
-  --git-url "$GIT_URL" \
-  --git-ref "$GIT_REF" \
-  --git-subdir dockerhost \
-  --secret-file ZAI_API_KEYS_FILE=<path-to-private-zai-keys-file> \
-  --secret-env GEMINI_API_KEY \
-  --secret-env WC2026_AGENT_API_KEY
+# Replace ZAI_API_KEY in the full deploy command and keep PROVIDER_KEY_POOL_SCOPE=key:
+--secret-file ZAI_API_KEYS_FILE=<path-to-private-zai-keys-file>
 ```
 
 如果需要同时配置多个 provider/model 或自定义 slot id、rpm、tpm,使用 `PROVIDER_KEY_POOL_FILE`:
 
 ```bash
-envctl up \
-  --name "$ENV_NAME" \
-  --git-url "$GIT_URL" \
-  --git-ref "$GIT_REF" \
-  --git-subdir dockerhost \
-  --secret-file PROVIDER_KEY_POOL_FILE=<path-to-private-provider-key-pool-json> \
-  --secret-env GEMINI_API_KEY
+# Add this to the full deploy command when provider slots are loaded from a file:
+--secret-file PROVIDER_KEY_POOL_FILE=<path-to-private-provider-key-pool-json>
 ```
 
-如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。WC2026 Agent 数据接口还需要普通环境变量 `WC2026_AGENT_API_BASE_URL` 和可选 `WC2026_AGENT_API_TIMEOUT_S`;如果目标中心化环境要求 `wc-api-key`,密钥只通过 `WC2026_AGENT_API_KEY` secret 注入,不要把真实值写进仓库或命令日志。
+如果 DockerHost 对本环境的 secret 是一次性注入,同环境 redeploy 或 rollback 时也要重新传入相同的 `--secret-env` 或 `--secret-file` 参数。WC2026 Agent 数据接口还需要普通环境变量 `WC2026_AGENT_API_BASE_URL` 和可选 `WC2026_AGENT_API_TIMEOUT_S`;如果目标中心化环境要求 `wc-api-key`,密钥只通过 `WC2026_AGENT_API_KEY` secret 注入,不要把真实值写进仓库或命令日志。发布后用 `envctl config --name "$ENV_NAME" --service api` 确认 `PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS="8192"`。
 
 ## 5. Git Ref Deploy
 
@@ -221,16 +244,17 @@ envctl up \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
-  --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}"
 
 envctl status --name "$ENV_NAME"
 ```
 
-长驻 branch-space 使用同一 Git ref 概念:
+长驻 branch-space 使用同一 Git ref 概念,但 deploy 时仍要传完整
+`WC2026_DOCKERHOST_SECRET_ENVS`:
 
 ```bash
-envctl branch-space deploy --name "$ENV_NAME"
+envctl branch-space deploy --name "$ENV_NAME" \
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}"
 envctl branch-space status --name "$ENV_NAME"
 ```
 
@@ -444,8 +468,7 @@ envctl up \
   --git-url "$GIT_URL" \
   --git-ref "$GIT_REF" \
   --git-subdir dockerhost \
-  --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}"
 ```
 
 redeploy 后重复:
@@ -474,8 +497,7 @@ envctl up \
   --git-url "$GIT_URL" \
   --git-ref "$PREVIOUS_SHA" \
   --git-subdir dockerhost \
-  --secret-env ZAI_API_KEY \
-  --secret-env GEMINI_API_KEY
+  "${WC2026_DOCKERHOST_SECRET_ENVS[@]}"
 
 envctl status --name "$ENV_NAME"
 ```

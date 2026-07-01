@@ -40,7 +40,7 @@ export LLM_PROVIDER=zai
 export ZAI_API_KEY='<set-by-secret-manager>'
 ```
 
-DockerHost 部署时使用 `dockerhost/env.example` 中的变量形态，并通过 `envctl --secret-env ZAI_API_KEY` 注入真实 key。世界杯 RAG smoke 可以先用 `LLM_PROVIDER=mock`、`EMBEDDING_PROVIDER=hash` 验证平台链路，再切真实 provider。
+DockerHost 部署时使用 `dockerhost/env.example` 中的变量形态。真实 WC2026 环境不要只注入 `ZAI_API_KEY`;按 `AGENTS.md` 和 [DockerHost 发布与回滚 runbook](docs/DOCKERHOST_RELEASE_RUNBOOK.md) 的完整 `--secret-env` 列表注入 provider、embedding、RAG、中心化接口、限流和 `PROVIDER_DEFAULT_MAX_OUTPUT_TOKENS=8192`。世界杯 RAG smoke 可以先用 `LLM_PROVIDER=mock`、`EMBEDDING_PROVIDER=hash` 验证平台链路，再切真实 provider。
 
 ## 端到端 demo(curl)
 
