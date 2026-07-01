@@ -19,7 +19,7 @@ POSITIONING_SPEC_ID = "SPEC-WORLDCUP-AGENT-POSITIONING-001"
 EFFECT_GUARDRAILS_SPEC_ID = "SPEC-WORLDCUP-AGENT-EFFECT-GUARDRAILS-001"
 LANGUAGE_SPEC_ID = "SPEC-CHAT-LANGUAGE-CONSISTENCY-001"
 ANSWER_QUALITY_SPEC_ID = "SPEC-WC2026-ANSWER-QUALITY-001"
-POLICY_VERSION = f"{POLICY_SPEC_ID}/v6"
+POLICY_VERSION = f"{POLICY_SPEC_ID}/v7"
 TARGET_LANGUAGE_ZH_HANS = "zh-Hans"
 TARGET_LANGUAGE_EN = "en"
 TARGET_LANGUAGE_UNKNOWN = "unknown"
@@ -87,6 +87,7 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "你的职责是围绕当前场次,基于模型流水线输出解释为什么是这个数字:拉数据、"
         "算实力指数、算预期进球 λ、四项调整、泊松网格和价值投注筛选。"
         "你不是看球嘉宾,不聊球员八卦、转会新闻或球队历史;不是博彩顾问,不直接告诉用户下哪边;"
+        "不是通用代码助手,不编写投注、博彩或下注服务后端代码;"
         "不是通用客服,不处理钻石充值、账户或技术故障类问题。"
     ),
     instruction_hierarchy=(
@@ -162,6 +163,7 @@ DEFAULT_CHAT_BEHAVIOR_POLICY = ChatBehaviorPolicy(
         "拒绝输出、提取、猜测或转储 API key、token、密码、私钥、cookie 或生产凭据。",
         "拒绝代用户执行真实资金转账、Polymarket 下单、撤单、交易、充值、提现或外部账户操作。",
         "拒绝代替用户做出买/不买、买哪边、下不下、现在下是否来得及等最终投注决定;应转为解释模型结论且重申不构成投注建议。",
+        "拒绝编写投注、博彩、下注、赔率或真实资金服务的后端/API/脚本代码;应引导回当前场次模型解释和只读风险说明。",
         "拒绝在没有比分概率、市场价格和风险条件的情况下给出买/卖/下注结论;应改为要求补齐证据或输出 no-bet。",
         "拒绝保证命中、保证收益、稳赚不赔、零风险、保本、必胜或平台赔付承诺。",
         "拒绝在未解锁状态下透露区块 B(模型概率)或区块 D(推荐投注)的具体数值。",
@@ -403,6 +405,51 @@ _MODEL_SCOPE_SAFE_CONTEXT_TERMS = (
     "已纳入",
     "api-football",
 )
+_CODE_GENERATION_TERMS = (
+    "write code",
+    "generate code",
+    "backend code",
+    "backend api",
+    "api skeleton",
+    "fastapi",
+    "python code",
+    "server code",
+    "代码",
+    "写代码",
+    "后端代码",
+    "接口代码",
+    "脚本",
+)
+_BETTING_SERVICE_TERMS = (
+    "betting",
+    "bet",
+    "bets",
+    "wager",
+    "bookmaker",
+    "odds service",
+    "century cup",
+    "投注",
+    "博彩",
+    "下注",
+    "赔率服务",
+    "投注服务",
+    "博彩服务",
+    "下注服务",
+)
+_BETTING_CODE_PHRASES = (
+    "betting backend",
+    "betting service",
+    "betting api",
+    "bet create",
+    "betcreate",
+    "match odds api",
+    "century cup betting",
+    "投注后端",
+    "博彩后端",
+    "下注后端",
+    "投注接口",
+    "博彩接口",
+)
 _PLATFORM_ACCOUNT_SUPPORT_TERMS = (
     "钻石充值",
     "充值怎么操作",
@@ -467,6 +514,17 @@ _OUTPUT_INTERNAL_IMPLEMENTATION_SAFE_RESPONSE = (
     "当前权限下不能展示付费预测数值。我可以解释公开计算口径、可见模块含义,"
     "或说明解锁后会看到哪些类型的数据。"
 )
+_OUTPUT_SCOPE_SAFE_RESPONSES = {
+    TARGET_LANGUAGE_ZH_HANS: (
+        "抱歉,这个请求超出当前世界杯预测 Agent 的范围。"
+        "我不能编写投注、博彩或下注服务的后端代码;可以改为解释当前场次模型结论、概率差、赔率区间和风险条件。"
+    ),
+    TARGET_LANGUAGE_EN: (
+        "Sorry, that is outside this World Cup forecasting Agent's scope. "
+        "I cannot write backend code for a betting, wagering, or odds service here. "
+        "I can explain the current match model output, probability gap, odds range, and risk conditions instead."
+    ),
+}
 _ZH_MARKET_RISK_FOOTER = (
     "风险提示:以上仅解释模型和市场触发条件,不构成投注建议,也不能代替你做最终决策;"
     "概率不是保证,真实资金操作需自行确认。"
@@ -594,11 +652,7 @@ class StreamingOutputGuardrail:
         self._pending += text
         decision = evaluate_assistant_answer(
             self._pending,
-            target_language=(
-                self._target_language
-                if not self._language_gate_open
-                else TARGET_LANGUAGE_UNKNOWN
-            ),
+            target_language=self._target_language,
         )
         if decision.action is GuardrailAction.REFUSE:
             self._blocked = True
@@ -625,11 +679,7 @@ class StreamingOutputGuardrail:
             return self._filter_style_chunk("", final=True)
         decision = evaluate_assistant_answer(
             self._pending,
-            target_language=(
-                self._target_language
-                if not self._language_gate_open
-                else TARGET_LANGUAGE_UNKNOWN
-            ),
+            target_language=self._target_language,
         )
         if decision.action is GuardrailAction.REFUSE:
             self._blocked = True
@@ -690,7 +740,10 @@ class StreamingOutputGuardrail:
         if len(text) <= remaining:
             self._style_emitted_chars += len(text)
             return text
-        clipped = _clip_to_terminal_text(text[:remaining])
+        clipped = _clip_to_terminal_text(
+            text[:remaining],
+            target_language=self._target_language,
+        )
         self._style_clamped = True
         self._style_emitted_chars += len(clipped)
         return clipped or None
@@ -1019,6 +1072,13 @@ def evaluate_user_message(message: str) -> GuardrailDecision:
                 ),
             ),
         )
+    if _is_betting_code_generation_request(text):
+        return GuardrailDecision(
+            GuardrailAction.REFUSE,
+            GuardrailCategory.MODEL_SCOPE_OUT_OF_BOUNDS,
+            "betting_code_generation_request",
+            _model_scope_safe_response(target_language),
+        )
     if _contains_any(text, _MODEL_SCOPE_OUT_OF_BOUNDS_TERMS) and not _is_model_scope_safe_context(text):
         return GuardrailDecision(
             GuardrailAction.REFUSE,
@@ -1093,6 +1153,13 @@ def evaluate_assistant_answer(
             "assistant_output_internal_permission_fields",
             _OUTPUT_INTERNAL_IMPLEMENTATION_SAFE_RESPONSE,
         )
+    if _contains_betting_code_output(answer):
+        return GuardrailDecision(
+            GuardrailAction.REFUSE,
+            GuardrailCategory.MODEL_SCOPE_OUT_OF_BOUNDS,
+            "assistant_output_betting_code_generation",
+            _model_scope_safe_response(target_language),
+        )
     language_decision = _evaluate_language_consistency(answer, target_language)
     if language_decision.action is GuardrailAction.REFUSE:
         return language_decision
@@ -1145,12 +1212,29 @@ def _is_model_scope_safe_context(text: str) -> bool:
     return _contains_any(text, _MODEL_SCOPE_SAFE_CONTEXT_TERMS)
 
 
+def _is_betting_code_generation_request(text: str) -> bool:
+    return _contains_any(text, _BETTING_CODE_PHRASES) or (
+        _contains_any(text, _CODE_GENERATION_TERMS)
+        and _contains_any(text, _BETTING_SERVICE_TERMS)
+    )
+
+
+def _contains_betting_code_output(answer: str) -> bool:
+    text = _normalize(answer)
+    return _contains_any(text, _BETTING_CODE_PHRASES) or (
+        _contains_any(text, _CODE_GENERATION_TERMS)
+        and _contains_any(text, _BETTING_SERVICE_TERMS)
+    )
+
+
 def _should_buffer_style_line(line: str) -> bool:
     """Hold incomplete table rows until newline so they can be removed safely."""
     return line.lstrip().startswith("|")
 
 
-def _clip_to_terminal_text(text: str) -> str:
+def _clip_to_terminal_text(
+    text: str, *, target_language: str = TARGET_LANGUAGE_UNKNOWN
+) -> str:
     """Clip concise output at a sentence boundary and keep terminal punctuation."""
     stripped = text.rstrip()
     if not stripped:
@@ -1161,12 +1245,52 @@ def _clip_to_terminal_text(text: str) -> str:
         return stripped[: best + 1]
     line_boundary = stripped.rfind("\n")
     if line_boundary >= max(120, int(len(stripped) * 0.45)):
-        return f"{stripped[:line_boundary].rstrip()}\n更多细节请要求展开。"
+        return _append_expansion_hint(
+            stripped[:line_boundary].rstrip(),
+            target_language=target_language,
+        )
     soft_boundary_chars = "，,、 "
     soft = max(stripped.rfind(char) for char in soft_boundary_chars)
     if soft >= max(120, int(len(stripped) * 0.55)):
-        return f"{stripped[:soft].rstrip(' ,，、:：;；-')}。"
-    return f"{stripped.rstrip(' ,，、:：;；-')}。"
+        return (
+            f"{stripped[:soft].rstrip(' ,，、:：;；-')}"
+            f"{_sentence_period(target_language)}"
+        )
+    return f"{stripped.rstrip(' ,，、:：;；-')}{_sentence_period(target_language)}"
+
+
+def _append_expansion_hint(
+    text: str, *, target_language: str = TARGET_LANGUAGE_UNKNOWN
+) -> str:
+    clipped = text.rstrip()
+    if _inside_markdown_code_fence(clipped):
+        clipped = f"{clipped}\n```"
+    hint = _expansion_hint(target_language)
+    return f"{clipped}\n{hint}" if clipped else hint
+
+
+def _inside_markdown_code_fence(text: str) -> bool:
+    fences = re.findall(r"(?m)^\s*```", text)
+    return len(fences) % 2 == 1
+
+
+def _expansion_hint(target_language: str) -> str:
+    if normalize_target_language(target_language) == TARGET_LANGUAGE_EN:
+        return "Ask for more detail if needed."
+    return "更多细节请要求展开。"
+
+
+def _sentence_period(target_language: str) -> str:
+    if normalize_target_language(target_language) == TARGET_LANGUAGE_EN:
+        return "."
+    return "。"
+
+
+def _model_scope_safe_response(target_language: str) -> str:
+    normalized = normalize_target_language(target_language)
+    if normalized == TARGET_LANGUAGE_EN:
+        return _OUTPUT_SCOPE_SAFE_RESPONSES[TARGET_LANGUAGE_EN]
+    return _OUTPUT_SCOPE_SAFE_RESPONSES[TARGET_LANGUAGE_ZH_HANS]
 
 
 def _markdown_table_line_to_text(line: str) -> str:

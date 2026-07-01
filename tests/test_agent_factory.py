@@ -59,7 +59,7 @@ def test_build_model_returns_function_model_for_mock():
 
 def test_system_prompt_uses_versioned_chat_behavior_policy():
     assert "SPEC-CHAT-BEHAVIOR-POLICY-001" in _SYSTEM_PROMPT
-    assert "SPEC-CHAT-BEHAVIOR-POLICY-001/v6" in _SYSTEM_PROMPT
+    assert "SPEC-CHAT-BEHAVIOR-POLICY-001/v7" in _SYSTEM_PROMPT
     assert "World Cup Match Forecast Chat Server" in _SYSTEM_PROMPT
     assert "Agent模型的解释器" in _SYSTEM_PROMPT
     assert "当前场次" in _SYSTEM_PROMPT

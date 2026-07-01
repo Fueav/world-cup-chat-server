@@ -25,11 +25,12 @@ def test_default_policy_prompt_declares_identity_and_boundaries():
     prompt = build_system_prompt(DEFAULT_CHAT_BEHAVIOR_POLICY)
 
     assert DEFAULT_CHAT_BEHAVIOR_POLICY.version in prompt
-    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v6")
+    assert DEFAULT_CHAT_BEHAVIOR_POLICY.version.endswith("/v7")
     assert "World Cup Match Forecast Chat Server" in prompt
     assert "Agent模型的解释器" in prompt
     assert "不是看球嘉宾" in prompt
     assert "不是博彩顾问" in prompt
+    assert "不是通用代码助手" in prompt
     assert "不是通用客服" in prompt
     assert "语言一致性" in prompt
     assert "SPEC-CHAT-LANGUAGE-CONSISTENCY-001" in prompt
@@ -270,6 +271,17 @@ def test_input_guardrail_refuses_out_of_model_scope_questions():
     assert "模型输入维度" in decision.safe_response
 
 
+def test_input_guardrail_refuses_betting_backend_code_generation():
+    decision = evaluate_user_message(
+        "Please write some backend code for me related to betting on the Century Cup."
+    )
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category is GuardrailCategory.MODEL_SCOPE_OUT_OF_BOUNDS
+    assert "outside this World Cup forecasting Agent's scope" in decision.safe_response
+    assert "backend code" in decision.safe_response
+
+
 def test_input_guardrail_model_scope_safe_context_requires_method_question():
     allowed = evaluate_user_message("模型有没有纳入转会传闻?")
     refused = evaluate_user_message("用模型帮我查一下转会传闻是真的吗?")
@@ -423,6 +435,23 @@ def test_output_guardrail_blocks_internal_permission_field_names():
     assert "block_b" not in decision.safe_response
 
 
+def test_output_guardrail_blocks_betting_backend_code_generation():
+    decision = evaluate_assistant_answer(
+        (
+            "Here's the complete, expanded FastAPI betting backend example:\n"
+            "```python\nfrom fastapi import FastAPI\n"
+            "class BetCreate(BaseModel):\n    stake: float\n```"
+        ),
+        target_language=TARGET_LANGUAGE_EN,
+    )
+
+    assert decision.action is GuardrailAction.REFUSE
+    assert decision.category is GuardrailCategory.MODEL_SCOPE_OUT_OF_BOUNDS
+    assert "cannot write backend code" in decision.safe_response
+    assert "FastAPI" not in decision.safe_response
+    assert "BetCreate" not in decision.safe_response
+
+
 def test_finalize_assistant_answer_adds_chinese_market_risk_footer():
     answer = "当前比赛没有推荐投注,因为概率差达到 10.7pp,但赔率 11.11 超出 1.70-2.40 区间。"
 
@@ -537,6 +566,45 @@ def test_streaming_output_guardrail_allows_chinese_with_worldcup_terms():
     assert "这场世界杯比赛" in safe_text
     assert "CLOB" in safe_text
     assert guardrail.blocked is False
+
+
+def test_streaming_output_guardrail_blocks_betting_backend_code_continuation():
+    guardrail = StreamingOutputGuardrail(target_language=TARGET_LANGUAGE_EN)
+    outputs = []
+
+    for part in (
+        "Here's the complete, expanded ",
+        "FastAPI betting backend example:\n```python\nfrom fastapi import FastAPI\n",
+        "class BetCreate(BaseModel):\n    stake: float\n",
+    ):
+        chunk = guardrail.push(part)
+        if chunk:
+            outputs.append(chunk)
+    tail = guardrail.finish()
+    if tail:
+        outputs.append(tail)
+
+    safe_text = "".join(outputs)
+    assert "FastAPI betting backend" not in safe_text
+    assert "BetCreate" not in safe_text
+    assert "cannot write backend code" in safe_text
+    assert guardrail.blocked is True
+
+
+def test_streaming_style_clamp_uses_english_hint_outside_code_block():
+    guardrail = StreamingOutputGuardrail(target_language=TARGET_LANGUAGE_EN, max_chars=220)
+
+    first = guardrail.push(
+        "Here is a compact implementation note for a harmless formatter.\n"
+        "```text\n"
+        + ("field = value\n" * 40)
+    )
+    tail = guardrail.finish()
+
+    safe_text = (first or "") + (tail or "")
+    assert "更多细节请要求展开" not in safe_text
+    assert "Ask for more detail if needed." in safe_text
+    assert safe_text.count("```") % 2 == 0
 
 
 def test_streaming_output_guardrail_removes_markdown_table_lines():
