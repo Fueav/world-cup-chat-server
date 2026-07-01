@@ -74,6 +74,9 @@ async def test_locked_context_does_not_call_paid_match_context():
     assert result["answer_format"]["expanded_mode"] == "professional_pre_match_briefing"
     assert result["answer_format"]["expanded_max_chars"] == 1800
     assert "概率中枢" in result["answer_format"]["expanded_sections"]
+    assert result["answer_format"]["emoji_style"]["allowed"] is True
+    assert "⚽" in result["answer_format"]["emoji_style"]["examples"]
+    assert result["answer_format"]["emoji_style"]["max_per_line"] == 1
     assert result["payload"]["permission"]["state"] == "locked"
     assert result["payload"]["permission"]["paid_values_visible"] is False
     serialized = str(result["payload"])
@@ -100,6 +103,7 @@ async def test_unlocked_context_calls_current_match_only_and_masks_payload():
     assert result["answer_format"]["expanded_mode"] == "professional_pre_match_briefing"
     assert result["answer_format"]["expanded_max_chars"] == 1800
     assert "价值门槛" in result["answer_format"]["expanded_sections"]
+    assert result["answer_format"]["emoji_style"]["risk_note_plain"] is True
     assert "Markdown 表格" in result["answer_format"]["forbidden_by_default"]
     assert result["payload"]["probability_model"]["wdl_probability"]["home"] == 62.1
 

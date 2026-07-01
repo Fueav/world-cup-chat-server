@@ -112,6 +112,10 @@ def test_build_answer_format_instruction_declares_side_panel_contract():
 
     assert "侧边栏短答" in instruction
     assert "4 行以内" in instruction
+    assert "⚽" in instruction
+    assert "🏆" in instruction
+    assert "每行最多 1 个 emoji" in instruction
+    assert "风险提示不要 emoji 化" in instruction
     assert "结论:" in instruction
     assert "关键数据:" in instruction
     assert "状态/风险:" in instruction
@@ -128,6 +132,8 @@ def test_build_answer_format_instruction_expands_for_detailed_match_briefing():
 
     assert "专业赛前 briefing" in instruction
     assert "1200-1800" in instruction
+    assert "⚽" in instruction
+    assert "少量" in instruction
     assert "概率中枢" in instruction
     assert "价值门槛" in instruction
     assert "风险与取消条件" in instruction

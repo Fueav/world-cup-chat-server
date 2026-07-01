@@ -17,7 +17,9 @@
   - Assert the new quality spec appears in the behavior prompt.
   - Assert detailed requests map to professional pre-match briefing instructions.
   - Assert expanded streaming style allows a materially longer answer than the default concise cap.
+  - Assert concise and expanded answer-format instructions allow bounded WC2026-themed emoji.
   - Assert current-match answer metadata exposes expanded briefing mode.
+  - Assert current-match answer metadata exposes the bounded emoji style contract.
 - Verification:
   - `.venv/bin/python -m pytest tests/test_chat_behavior_policy.py tests/test_wc2026_agent_data.py -q`
 
@@ -29,6 +31,7 @@
 - Behavior change:
   - Detect explicit depth requests such as `详细`, `展开`, `深入`, `分析一下`, `deep dive`, or `in-depth`.
   - Inject expanded briefing format only for those requests.
+  - Allow sparse football/trophy/chart/target emoji in normal match-analysis formatting, with at most one per line or section and plain risk notes.
   - Keep default side-panel instructions and default stream cap unchanged.
 - Rollback note:
   - Revert the detail detector and expanded stream cap wiring; default concise behavior remains.
@@ -39,6 +42,7 @@
   - `app/runtime/wc2026_agent_data.py`
 - Behavior change:
   - Add expanded briefing metadata under `answer_format`.
+  - Add bounded emoji-style metadata under `answer_format`.
   - Do not alter unlocked central payload shape or paid-content masking rules.
 
 ## Completion Criteria

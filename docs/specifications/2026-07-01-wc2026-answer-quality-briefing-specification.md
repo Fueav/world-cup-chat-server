@@ -17,6 +17,11 @@
 
 - Default user questions still receive concise side-panel answers.
 - If the user explicitly asks for detail, expansion, in-depth analysis, or a full match view, the Agent may produce a longer professional pre-match briefing.
+- Normal match-analysis answers may use a small number of World Cup themed emoji
+  such as football, trophy, chart, or target markers to improve scanability.
+  Emoji must be sparse: at most one per short line or briefing section, never
+  stacked, and never used to replace numbers, evidence, no-bet status, or risk
+  language.
 - Expanded answers must remain evidence-led and must not fabricate probabilities, expected goals, CLOB prices, liquidity, recommendations, lineup news, or market data.
 - Expanded answers should be organized around:
   - conclusion first
@@ -30,6 +35,9 @@
 
 - No route, event, schema, or status-code changes.
 - `answer_format` metadata may expose both default concise mode and expanded professional briefing mode.
+- `answer_format` metadata may expose the bounded emoji style contract for the
+  Agent, but this is formatting guidance only and does not change response
+  envelopes.
 - Streaming behavior remains bounded; expanded mode uses a larger deterministic output-style cap than concise mode.
 
 ## Architecture
@@ -55,6 +63,8 @@
 
 - Prompt policy references `SPEC-WC2026-ANSWER-QUALITY-001`.
 - Default concise answers still use the four-field side-panel contract.
+- Default and expanded answer-format instructions allow sparse WC2026-themed
+  emoji while keeping risk notes and disclaimers plain.
 - Explicit detailed requests receive professional briefing instructions and a larger stream cap.
 - Expanded answer-format metadata is visible to current-match Agent data.
 - Guardrails still block direct betting decisions, guaranteed outcome claims, internal permission-field leaks, and fabricated paid values.

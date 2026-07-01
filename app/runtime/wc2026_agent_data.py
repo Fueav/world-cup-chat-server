@@ -370,6 +370,12 @@ def _short_answer_contract(locale: str) -> dict[str, Any]:
                 "market-depth dumps",
                 "step-by-step report prose",
             ],
+            "emoji_style": {
+                "allowed": True,
+                "examples": ["⚽", "🏆", "📊", "🎯"],
+                "max_per_line": 1,
+                "risk_note_plain": True,
+            },
         }
     return {
         "mode": "concise_side_panel",
@@ -406,4 +412,10 @@ def _short_answer_contract(locale: str) -> dict[str, Any]:
             "完整市场深度",
             "逐项流水账",
         ],
+        "emoji_style": {
+            "allowed": True,
+            "examples": ["⚽", "🏆", "📊", "🎯"],
+            "max_per_line": 1,
+            "risk_note_plain": True,
+        },
     }
