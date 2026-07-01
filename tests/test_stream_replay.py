@@ -123,3 +123,36 @@ async def test_wc2026_chat_stream_route_is_only_sse_route():
     assert current.status_code == 200
     assert "RUN_COMPLETED" in current.text
     assert legacy.status_code == 404
+
+
+async def test_wc2026_chat_stream_uses_short_sse_ping_interval():
+    from app.api.routers.stream import stream_sse
+
+    class _Request:
+        headers = {}
+
+        async def is_disconnected(self):
+            return False
+
+    class _Repos:
+        async def get_run(self, run_id):
+            return SimpleNamespace(conversation_id="conv-1")
+
+        async def get_conversation(self, conversation_id):
+            return SimpleNamespace(user_id="owner-1")
+
+    bus = FakeStreamBus()
+    await bus.publish(
+        "run-route-1",
+        AgentEvent(
+            agent_run_id="run-route-1",
+            trace_id="trace-route",
+            type=EventType.RUN_COMPLETED,
+            seq=1,
+            data={"status": "SUCCEEDED"},
+        ),
+    )
+
+    response = await stream_sse("run-route-1", _Request(), "owner-1", _Repos(), bus)
+
+    assert response.ping_interval == 5

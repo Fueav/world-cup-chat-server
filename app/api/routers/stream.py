@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 
 _WC2026_PREFIX = "/api/v1/wc2026"
 _WC2026_USER_QUERY = "user_uuid"
+_SSE_PING_SECONDS = 5
 
 router = APIRouter(prefix=_WC2026_PREFIX, tags=["stream"])
 
@@ -77,7 +78,7 @@ async def stream_sse(
             )
             yield {"event": EventType.ERROR.value, "data": str(exc)}
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(event_generator(), ping=_SSE_PING_SECONDS)
 
 
 @router.websocket("/chat/ws/{agent_run_id}")
